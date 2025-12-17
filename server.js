@@ -12,6 +12,50 @@ const PORT = process.env.PORT || 3000;
 // CHO PHÉP TẤT CẢ DOMAIN (dùng cho dev)
 app.use(cors());
 app.use(express.json());
+// ================== LOGIN APIs ==================
+app.post('/api/login', async (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ message: "Username và password bắt buộc" });
+    }
+
+    try {
+        const pool = await poolPromise;
+
+        // Mã hóa password client gửi lên bằng SHA2_256 giống trong SQL
+        const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
+
+        const result = await pool.request()
+            .input('username', sql.NVarChar, username)
+            .input('passwordHash', sql.VarChar, passwordHash)
+            .query(`SELECT userId, username, role, maNV, trangthai 
+                    FROM USERS 
+                    WHERE username = @username AND passwordHash = @passwordHash`);
+
+        if (result.recordset.length === 0) {
+            return res.status(401).json({ message: 'Username hoặc password sai' });
+        }
+
+        const user = result.recordset[0];
+
+        if (user.trangthai === 0) {
+            return res.status(403).json({ message: 'Tài khoản đã bị khóa' });
+        }
+
+        // Trả về thông tin user và role để frontend điều hướng
+        res.json({
+            userId: user.userId,
+            username: user.username,
+            role: user.role,
+            maNV: user.maNV
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+});
 
 // ================== PHONGBAN APIs ==================
 // GET all
@@ -3145,3 +3189,4 @@ app.listen(PORT, () => {
     console.log(`Server chạy tại http://localhost:${PORT}`);
     console.log(`CORS đã được bật – bạn có thể gọi API từ bất kỳ đâu!`);
 });
+
