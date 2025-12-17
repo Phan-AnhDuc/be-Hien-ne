@@ -566,7 +566,21 @@
     </style>
 </head>
 
+
 <body>
+    <button onclick="logout()" style="
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 10px 16px;
+        background: #e74c3c;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+    ">
+    Logout
+    </button>
     <div class="container">
         <!-- Sidebar -->
         <div class="sidebar">
@@ -1277,3 +1291,19 @@
     </script>
 </body>
 </html>
+
+<script>
+    const user = JSON.parse(localStorage.getItem("user"));
+    if(!user || user.role !== "user") {
+        alert("Bạn không có quyền truy cập!");
+        window.location.href = "login.html";
+    }
+
+    function logout() {
+        localStorage.removeItem("user");
+        window.location.href = "login.html";
+    }
+</script>
+<button onclick="logout()">Đăng xuất</button>
+
+
