@@ -1219,7 +1219,7 @@
                     renderProductsTable(products);
                 }
             } catch (error) {
-                showToast('Lỗi tải dữ liệu sản phẩm', 'error');
+                // showToast('Lỗi tải dữ liệu sản phẩm', 'error');
             }
         }
 
@@ -1614,7 +1614,7 @@
                 const invoiceResult = await invoiceRes.json();
 
                 if (!invoiceResult.success) {
-                    showToast(invoiceResult.message || 'Lỗi tạo hóa đơn', 'error');
+                    // showToast(invoiceResult.message || 'Lỗi tạo hóa đơn', 'error');
                     return;
                 }
 
