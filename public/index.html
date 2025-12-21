@@ -1294,8 +1294,8 @@
 
 <script>
     const user = JSON.parse(localStorage.getItem("user"));
-    if(!user || user.role !== "user") {
-        alert("Bạn không có quyền truy cập!");
+    if(!user || user.role !== "admin") {
+        alert("Bạn không có quyền truy cập trang Admin!");
         window.location.href = "login.html";
     }
 
@@ -1304,6 +1304,5 @@
         window.location.href = "login.html";
     }
 </script>
-<button onclick="logout()">Đăng xuất</button>
 
 

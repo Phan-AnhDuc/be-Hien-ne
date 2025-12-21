@@ -250,7 +250,7 @@ async function login(e) {
         if (data.user?.role === "admin" || data.role === "admin") {
             window.location.href = "index.html"; // dashboard admin
         } else {
-            window.location.href = "customer.html"; // dashboard user
+            window.location.href = "cusstomer.html"; // dashboard nhân viên bán hàng
         }
     } catch (err) {
         alert("Lỗi kết nối server: " + err.message);
