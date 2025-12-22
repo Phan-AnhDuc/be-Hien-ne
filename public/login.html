@@ -239,15 +239,19 @@ async function login(e) {
             })
         });
 
+        const data = await res.json();
+
         if (!res.ok) {
-            alert("Sai tài khoản hoặc mật khẩu");
+            alert(data.message || "Sai tài khoản hoặc mật khẩu");
             return;
         }
 
-        const data = await res.json();
-        localStorage.setItem("user", JSON.stringify(data.user || data));
+        // Lưu thông tin user vào localStorage
+        const userData = data.user || data;
+        localStorage.setItem("user", JSON.stringify(userData));
 
-        if (data.user?.role === "admin" || data.role === "admin") {
+        // Điều hướng theo role
+        if (userData.role === "admin") {
             window.location.href = "index.html"; // dashboard admin
         } else {
             window.location.href = "cusstomer.html"; // dashboard nhân viên bán hàng

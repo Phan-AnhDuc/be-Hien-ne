@@ -25,21 +25,40 @@ app.post('/api/login', async (req, res) => {
         const pool = await poolPromise;
 
         // Mã hóa password client gửi lên bằng SHA2_256 giống trong SQL
-        // SQL Server CONVERT(..., 2) tạo hex string UPPERCASE, nên cần toUpperCase()
         const passwordHash = crypto.createHash('sha256').update(password).digest('hex').toUpperCase();
 
-        const result = await pool.request()
+        // Lấy user từ DB
+        const userResult = await pool.request()
             .input('username', sql.NVarChar, username)
-            .input('passwordHash', sql.VarChar, passwordHash)
-            .query(`SELECT userId, username, role, maNV, trangthai 
+            .query(`SELECT userId, username, passwordHash, role, maNV, trangthai 
                     FROM USERS 
-                    WHERE username = @username AND passwordHash = @passwordHash`);
+                    WHERE username = @username`);
 
-        if (result.recordset.length === 0) {
+        if (userResult.recordset.length === 0) {
             return res.status(401).json({ message: 'Username hoặc password sai' });
         }
 
-        const user = result.recordset[0];
+        const user = userResult.recordset[0];
+        const storedHash = user.passwordHash;
+
+        // So sánh hash (case-insensitive vì SQL Server có thể lưu khác nhau)
+        // CONVERT(..., 2) trong SQL Server tạo hex string, có thể uppercase hoặc lowercase
+        const hashMatch = storedHash && (
+            storedHash.toUpperCase() === passwordHash.toUpperCase() ||
+            storedHash.toLowerCase() === passwordHash.toLowerCase()
+        );
+
+        if (!hashMatch) {
+            // Debug log
+            console.log('Password hash mismatch:', {
+                username,
+                storedHash: storedHash,
+                computedHash: passwordHash,
+                storedLength: storedHash ? storedHash.length : 0,
+                computedLength: passwordHash.length
+            });
+            return res.status(401).json({ message: 'Username hoặc password sai' });
+        }
 
         if (user.trangthai === 0) {
             return res.status(403).json({ message: 'Tài khoản đã bị khóa' });
@@ -47,10 +66,13 @@ app.post('/api/login', async (req, res) => {
 
         // Trả về thông tin user và role để frontend điều hướng
         res.json({
-            userId: user.userId,
-            username: user.username,
-            role: user.role,
-            maNV: user.maNV
+            success: true,
+            user: {
+                userId: user.userId,
+                username: user.username,
+                role: user.role,
+                maNV: user.maNV
+            }
         });
 
     } catch (err) {
