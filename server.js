@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const { poolPromise, sql } = require('./db.config');
 const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
@@ -24,7 +25,8 @@ app.post('/api/login', async (req, res) => {
         const pool = await poolPromise;
 
         // Mã hóa password client gửi lên bằng SHA2_256 giống trong SQL
-        const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
+        // SQL Server CONVERT(..., 2) tạo hex string UPPERCASE, nên cần toUpperCase()
+        const passwordHash = crypto.createHash('sha256').update(password).digest('hex').toUpperCase();
 
         const result = await pool.request()
             .input('username', sql.NVarChar, username)
