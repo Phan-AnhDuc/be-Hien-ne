@@ -1023,7 +1023,7 @@
     </div>
 
     <script>
-        const API_BASE = '/api';
+        const API_BASE = 'http://localhost:3000/api';
         let currentPage = 'dashboard';
         let products = [];
         let customers = [];
@@ -1171,7 +1171,7 @@
                 const topProducts = products.slice(0, 4);
                 renderTopProducts(topProducts);
             } catch (error) {
-                showToast('Lỗi tải dữ liệu', 'error');
+                // showToast('Lỗi tải dữ liệu', 'error');
             }
         }
 
@@ -1248,7 +1248,7 @@
                     renderProductStockWarnings();
                 }
             } catch (error) {
-                showToast('Lỗi tải dữ liệu', 'error');
+                // showToast('Lỗi tải dữ liệu', 'error');
             }
         }
 
@@ -1902,7 +1902,7 @@
                     renderOrdersTable(ordersList);
                 }
             } catch (error) {
-                showToast('Lỗi tải dữ liệu', 'error');
+                // showToast('Lỗi tải dữ liệu', 'error');
             }
         }
 
@@ -2046,7 +2046,7 @@
                     renderCustomersTable(customers);
                 }
             } catch (error) {
-                showToast('Lỗi tải dữ liệu', 'error');
+                // showToast('Lỗi tải dữ liệu', 'error');
             }
         }
 
