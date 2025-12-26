@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Quản Lý Cửa Hàng FMSTYLE</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <button class="logout-btn" onclick="logout()">Logout</button>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>🏪 FMSTYLE</h1>
+                <p>Hệ Thống Quản Lý</p>
+            </div>
+            <div class="menu-item active" onclick="showPage('phongban', this)">
+                <span class="menu-item-icon">🏢</span>
+                <span>Phòng Ban</span>
+            </div>
+            <div class="menu-item" onclick="showPage('vitri', this)">
+                <span class="menu-item-icon">📍</span>
+                <span>Vị Trí</span>
+            </div>
+            <div class="menu-item" onclick="showPage('nhacungcap', this)">
+                <span class="menu-item-icon">🚚</span>
+                <span>Nhà Cung Cấp</span>
+            </div>
+            <div class="menu-item" onclick="showPage('phanloaikh', this)">
+                <span class="menu-item-icon">👥</span>
+                <span>Phân Loại KH</span>
+            </div>
+            <div class="menu-item" onclick="showPage('khachhang', this)">
+                <span class="menu-item-icon">👤</span>
+                <span>Khách Hàng</span>
+            </div>
+            <div class="menu-item" onclick="showPage('nhanvien', this)">
+                <span class="menu-item-icon">👔</span>
+                <span>Nhân Viên</span>
+            </div>
+            <div class="menu-item" onclick="showPage('lichsutheodoinv', this)">
+                <span class="menu-item-icon">📅</span>
+                <span>Lịch Sử Theo Dõi</span>
+            </div>
+            <div class="menu-item" onclick="showPage('phieutheodoinv', this)">
+                <span class="menu-item-icon">📋</span>
+                <span>Phiếu Theo Dõi NV</span>
+            </div>
+            <div class="menu-item" onclick="showPage('hanghoa', this)">
+                <span class="menu-item-icon">📦</span>
+                <span>Hàng Hóa</span>
+            </div>
+            <div class="menu-item" onclick="showPage('phieunhap', this)">
+                <span class="menu-item-icon">📥</span>
+                <span>Phiếu Nhập</span>
+            </div>
+            <div class="menu-item" onclick="showPage('chitietphieunhap', this)">
+                <span class="menu-item-icon">📄</span>
+                <span>Chi Tiết Phiếu Nhập</span>
+            </div>
+            <div class="menu-item" onclick="showPage('hoadon', this)">
+                <span class="menu-item-icon">🧾</span>
+                <span>Hóa Đơn</span>
+            </div>
+            <div class="menu-item" onclick="showPage('chitiethd', this)">
+                <span class="menu-item-icon">📝</span>
+                <span>Chi Tiết Hóa Đơn</span>
+            </div>
+            <div class="menu-item" onclick="showPage('magiamgia', this)">
+                <span class="menu-item-icon">🎫</span>
+                <span>Mã Giảm Giá</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div id="page-content">
+                <!-- Content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Modal -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Thêm mới</h3>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modal-body">
+                <!-- Form will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/pages.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/app.js"></script>
+    <script>
+        // Check authentication
+        requireAuth('admin');
+    </script>
+</body>
+</html>

@@ -977,16 +977,12 @@
                 <button class="close-btn" onclick="closeNewCustomerModal()">×</button>
             </div>
             <form id="new-customer-form" onsubmit="saveNewCustomer(event)">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Mã Khách Hàng *</label>
-                        <input type="text" id="new-cust-id" required placeholder="VD: KH001">
-                    </div>
-                    <div class="form-group">
-                        <label>Họ Tên *</label>
-                        <input type="text" id="new-cust-name" required placeholder="Nhập họ tên">
-                    </div>
+                <div class="form-group">
+                    <label>Họ Tên *</label>
+                    <input type="text" id="new-cust-name" required placeholder="Nhập họ tên">
+                    <p style="font-size: 11px; color: #999; margin-top: 5px;">Mã khách hàng sẽ được tự động sinh</p>
                 </div>
+                <div class="form-row">
                 <div class="form-row">
                     <div class="form-group">
                         <label>Số Điện Thoại</label>
@@ -1697,13 +1693,18 @@
         async function saveNewCustomer(event) {
             event.preventDefault();
             
+            // Không cần nhập mã KH, server tự động sinh
             const data = {
-                maKH: document.getElementById('new-cust-id').value.trim(),
                 tenKH: document.getElementById('new-cust-name').value.trim(),
                 sdt: document.getElementById('new-cust-phone').value.trim(),
-                maPLKH: document.getElementById('new-cust-type').value,
+                maPLKH: document.getElementById('new-cust-type').value, // Mặc định thành viên
                 diachi: document.getElementById('new-cust-address').value.trim()
             };
+
+            if (!data.tenKH) {
+                showToast('Vui lòng nhập tên khách hàng', 'error');
+                return;
+            }
 
             try {
                 const response = await fetch(`${API_BASE}/khachhang`, {
@@ -1720,12 +1721,12 @@
                     const customersData = await customersRes.json();
                     if (customersData.success) customers = customersData.data;
 
-                    // Select the new customer
-                    selectedCustomer = customers.find(c => c.maKH === data.maKH);
+                    // Select the new customer (mã KH được server trả về)
+                    selectedCustomer = customers.find(c => c.maKH === result.data.maKH);
                     
                     closeNewCustomerModal();
                     renderCart();
-                    showToast('Đã thêm khách hàng mới', 'success');
+                    showToast('Đã thêm khách hàng mới (mã: ' + result.data.maKH + ')', 'success');
                 } else {
                     showToast(result.message || 'Lỗi thêm khách hàng', 'error');
                 }
@@ -1747,7 +1748,7 @@
             }
 
             try {
-                const maHD = 'HD' + Date.now().toString().slice(-8);
+                // Server tự động sinh mã HD
                 const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
                 const discountAmount = appliedDiscount ? (subtotal * appliedDiscount.phantramgiam / 100) : 0;
                 
@@ -1759,9 +1760,8 @@
                 const total = subtotal - discountAmount - pointsValue;
                 const pointsEarned = Math.floor(total / 1000);
 
-                // Create invoice
+                // Create invoice (server tự động sinh maHD)
                 const invoiceData = {
-                    maHD: maHD,
                     maNV: maNV,
                     maKH: selectedCustomer ? selectedCustomer.maKH : null,
                     ngaylap: new Date().toISOString().split('T')[0],
@@ -1780,8 +1780,11 @@
                     showToast(invoiceResult.message || 'Lỗi tạo hóa đơn', 'error');
                     return;
                 }
+                
+                // Lấy mã HD từ server
+                const maHD = invoiceResult.data.maHD;
 
-                // Add invoice details
+                // Add invoice details (server tự động trừ hàng trong kho)
                 for (const item of cart) {
                     const detailData = {
                         maHD: maHD,
@@ -1790,11 +1793,19 @@
                         dongia: item.price
                     };
 
-                    await fetch(`${API_BASE}/chitiethd`, {
+                    const detailRes = await fetch(`${API_BASE}/chitiethd`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(detailData)
                     });
+                    
+                    const detailResult = await detailRes.json();
+                    if (!detailResult.success) {
+                        showToast(`Lỗi thêm sản phẩm ${item.name}: ${detailResult.message}`, 'error');
+                        // Rollback: xóa hóa đơn nếu có lỗi
+                        await fetch(`${API_BASE}/hoadon/${maHD}`, { method: 'DELETE' });
+                        return;
+                    }
                 }
 
                 // Update customer points if applicable
@@ -1894,7 +1905,15 @@
 
         async function loadOrders() {
             try {
-                const response = await fetch(`${API_BASE}/hoadon`);
+                const keyword = document.getElementById('search-order')?.value || '';
+                let url = `${API_BASE}/hoadon`;
+                
+                // Sử dụng API search nếu có keyword
+                if (keyword.trim()) {
+                    url = `${API_BASE}/hoadon/search?keyword=${encodeURIComponent(keyword)}`;
+                }
+                
+                const response = await fetch(url);
                 const result = await response.json();
 
                 if (result.success) {
@@ -1902,7 +1921,7 @@
                     renderOrdersTable(ordersList);
                 }
             } catch (error) {
-                // showToast('Lỗi tải dữ liệu', 'error');
+                showToast('Lỗi tải dữ liệu', 'error');
             }
         }
 
@@ -1942,6 +1961,8 @@
                                     <td>
                                         <button class="btn btn-sm btn-secondary" onclick="exportPDF('${o.maHD}')">PDF</button>
                                         <button class="btn btn-sm btn-success" onclick="exportExcel('${o.maHD}')">Excel</button>
+                                        <button class="btn btn-sm btn-warning" onclick="openTraHangModal('${o.maHD}')">Trả hàng</button>
+                                        <button class="btn btn-sm btn-primary" onclick="openDoiHangModal('${o.maHD}')">Đổi hàng</button>
                                     </td>
                                 </tr>
                             `;
