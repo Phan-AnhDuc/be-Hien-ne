@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FMSTYLE - Hệ Thống Bán Hàng</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap');
 
         * {
             margin: 0;
@@ -15,8 +15,11 @@
         }
 
         body {
-            font-family: 'Be Vietnam Pro', sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Montserrat', 'Be Vietnam Pro', sans-serif;
+            background-image: url("../assets/1.png");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
             min-height: 100vh;
             color: #333;
         }
@@ -28,51 +31,81 @@
 
         /* Sidebar */
         .sidebar {
-            width: 260px;
-            background: rgba(10, 10, 30, 0.98);
+            width: 280px;
+            background: linear-gradient(135deg, rgba(253, 244, 215, 0.95) 0%, rgba(212, 231, 230, 0.95) 35%, rgba(241, 189, 181, 0.95) 70%, rgba(216, 211, 233, 0.95) 100%);
             backdrop-filter: blur(10px);
-            color: white;
+            color: #1a2b48;
             padding: 20px 0;
-            box-shadow: 4px 0 25px rgba(0, 0, 0, 0.4);
+            box-shadow: 4px 0 25px rgba(0, 0, 0, 0.15);
             position: fixed;
             height: 100vh;
-            border-right: 1px solid rgba(255, 255, 255, 0.08);
+            border-right: 1px solid rgba(0, 0, 0, 0.1);
             overflow-y: auto;
         }
 
         .sidebar-header {
             padding: 25px 20px;
             text-align: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
             margin-bottom: 20px;
         }
 
         .sidebar-header h1 {
-            font-size: 26px;
-            background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+            font-size: 32px;
+            font-weight: 900;
+            letter-spacing: -2px;
+            text-transform: uppercase;
+            line-height: 1;
+            position: relative;
+            display: inline-block;
+            background: linear-gradient(to bottom, #1a2b48 0%, #4a5568 45%, #1a2b48 100%);
             -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
             background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.2));
             margin-bottom: 8px;
-            font-weight: 700;
+        }
+
+        .sidebar-header h1::after {
+            content: attr(data-text);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 5;
+            background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.8) 45%, rgba(255, 255, 255, 0.8) 50%, transparent 60%);
+            background-size: 200% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: shine 5s infinite linear;
+        }
+
+        @keyframes shine {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
         }
 
         .sidebar-header p {
             font-size: 12px;
-            color: #888;
+            opacity: 0.8;
+            color: #4a5568;
+            font-weight: 500;
         }
 
         .user-info {
             padding: 15px 20px;
-            background: rgba(255,255,255,0.05);
+            background: rgba(255,255,255,0.15);
             margin: 0 15px 20px;
             border-radius: 10px;
             font-size: 13px;
+            color: #1a2b48;
         }
 
         .user-info span {
-            color: #00d2ff;
-            font-weight: 600;
+            color: #4a90e2;
+            font-weight: 700;
         }
 
         .menu-item {
@@ -83,21 +116,21 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            color: rgba(255, 255, 255, 0.65);
+            color: #4a5568;
             font-size: 14px;
         }
 
         .menu-item:hover {
-            background: rgba(0, 210, 255, 0.1);
-            border-left-color: #00d2ff;
-            color: white;
+            background: rgba(212, 231, 230, 0.3);
+            border-left-color: #4a90e2;
+            color: #1a2b48;
         }
 
         .menu-item.active {
-            background: linear-gradient(90deg, rgba(0, 210, 255, 0.15) 0%, transparent 100%);
-            border-left-color: #00d2ff;
-            color: white;
-            font-weight: 600;
+            background: linear-gradient(90deg, rgba(212, 231, 230, 0.4) 0%, transparent 100%);
+            border-left-color: #4a90e2;
+            color: #1a2b48;
+            font-weight: 700;
         }
 
         .logout-btn {
@@ -106,33 +139,35 @@
             background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
             color: white;
             border: none;
-            border-radius: 10px;
+            border-radius: 50px;
             cursor: pointer;
             font-size: 14px;
-            font-weight: 600;
+            font-weight: 700;
             width: calc(100% - 30px);
             transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
         }
 
         .logout-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(231, 76, 60, 0.4);
+            box-shadow: 0 6px 20px rgba(231, 76, 60, 0.5);
         }
 
         /* Main Content */
         .main-content {
             flex: 1;
-            margin-left: 260px;
+            margin-left: 280px;
             padding: 25px;
-            background: #f0f2f5;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
             min-height: 100vh;
         }
 
         .page-header {
-            background: white;
+            background: linear-gradient(135deg, #fdf4d7 0%, #d4e7e6 35%, #f1bdb5 70%, #d8d3e9 100%);
             padding: 25px 30px;
             border-radius: 16px;
-            box-shadow: 0 2px 15px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
             margin-bottom: 25px;
             display: flex;
             justify-content: space-between;
@@ -140,9 +175,9 @@
         }
 
         .page-header h2 {
-            color: #1a1a2e;
+            color: #1a2b48;
             font-size: 24px;
-            font-weight: 700;
+            font-weight: 800;
         }
 
         .page-header p {
@@ -167,48 +202,54 @@
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
-            color: white;
+            background: linear-gradient(135deg, #d4e7e6 0%, #4a90e2 100%);
+            color: #1a2b48;
+            font-weight: 700;
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 210, 255, 0.35);
+            box-shadow: 0 6px 20px rgba(74, 144, 226, 0.3);
+            filter: brightness(1.05);
         }
 
         .btn-success {
             background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
             color: white;
+            font-weight: 700;
         }
 
         .btn-success:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 184, 148, 0.35);
+            box-shadow: 0 6px 20px rgba(0, 184, 148, 0.4);
         }
 
         .btn-danger {
             background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
             color: white;
+            font-weight: 700;
         }
 
         .btn-danger:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(231, 76, 60, 0.35);
+            box-shadow: 0 6px 20px rgba(231, 76, 60, 0.4);
         }
 
         .btn-secondary {
             background: linear-gradient(135deg, #636e72 0%, #2d3436 100%);
             color: white;
+            font-weight: 700;
         }
 
         .btn-secondary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(45, 52, 54, 0.35);
+            box-shadow: 0 6px 20px rgba(45, 52, 54, 0.4);
         }
 
         .btn-warning {
             background: linear-gradient(135deg, #fdcb6e 0%, #f39c12 100%);
-            color: #333;
+            color: #1a2b48;
+            font-weight: 700;
         }
 
         .btn-outline {
@@ -250,8 +291,8 @@
 
         .search-input:focus {
             outline: none;
-            border-color: #00d2ff;
-            box-shadow: 0 0 0 3px rgba(0, 210, 255, 0.1);
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
         }
 
         /* Table */
@@ -268,8 +309,8 @@
         }
 
         thead {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: white;
+            background: linear-gradient(135deg, #d4e7e6 0%, #4a90e2 100%);
+            color: #1a2b48;
         }
 
         th {
@@ -477,8 +518,8 @@
         .form-group input:focus,
         .form-group select:focus {
             outline: none;
-            border-color: #00d2ff;
-            box-shadow: 0 0 0 3px rgba(0, 210, 255, 0.1);
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
         }
 
         .form-row {
@@ -922,7 +963,7 @@
         <!-- Sidebar -->
         <div class="sidebar">
             <div class="sidebar-header">
-                <h1>FMSTYLE</h1>
+                <h1 data-text="FMSTYLE">FMSTYLE</h1>
                 <p>Hệ Thống Bán Hàng</p>
             </div>
             <div class="user-info" id="user-info">

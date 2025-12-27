@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');
+
 * {
     margin: 0;
     padding: 0;
@@ -5,8 +7,11 @@
 }
 
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    font-family: 'Montserrat', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-image: url("../assets/1.png");
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
     min-height: 100vh;
     color: #333;
 }
@@ -19,31 +24,66 @@ body {
 /* Sidebar */
 .sidebar {
     width: 280px;
-    background: linear-gradient(180deg, #1e3c72 0%, #2a5298 100%);
-    color: white;
+    background: linear-gradient(135deg, rgba(253, 244, 215, 0.95) 0%, rgba(212, 231, 230, 0.95) 35%, rgba(241, 189, 181, 0.95) 70%, rgba(216, 211, 233, 0.95) 100%);
+    backdrop-filter: blur(10px);
+    color: #1a2b48;
     padding: 20px 0;
-    box-shadow: 4px 0 15px rgba(0, 0, 0, 0.2);
+    box-shadow: 4px 0 25px rgba(0, 0, 0, 0.15);
     overflow-y: auto;
     position: fixed;
     height: 100vh;
+    border-right: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .sidebar-header {
-    padding: 20px;
+    padding: 25px 20px;
     text-align: center;
-    border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
     margin-bottom: 20px;
 }
 
 .sidebar-header h1 {
-    font-size: 20px;
-    color: white;
-    margin-bottom: 5px;
+    font-size: 32px;
+    font-weight: 900;
+    letter-spacing: -2px;
+    text-transform: uppercase;
+    line-height: 1;
+    position: relative;
+    display: inline-block;
+    background: linear-gradient(to bottom, #1a2b48 0%, #4a5568 45%, #1a2b48 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.2));
+    margin-bottom: 8px;
+}
+
+.sidebar-header h1::after {
+    content: attr(data-text);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+    background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.8) 45%, rgba(255, 255, 255, 0.8) 50%, transparent 60%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shine 5s infinite linear;
+}
+
+@keyframes shine {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
 }
 
 .sidebar-header p {
     font-size: 12px;
     opacity: 0.8;
+    color: #4a5568;
+    font-weight: 500;
 }
 
 .menu-item {
@@ -57,14 +97,16 @@ body {
 }
 
 .menu-item:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-left-color: #4fc3f7;
+    background: rgba(212, 231, 230, 0.3);
+    border-left-color: #4a90e2;
+    color: #1a2b48;
 }
 
 .menu-item.active {
-    background: rgba(255, 255, 255, 0.15);
-    border-left-color: #4fc3f7;
-    font-weight: bold;
+    background: linear-gradient(90deg, rgba(212, 231, 230, 0.4) 0%, transparent 100%);
+    border-left-color: #4a90e2;
+    color: #1a2b48;
+    font-weight: 700;
 }
 
 .menu-item-icon {
@@ -77,21 +119,24 @@ body {
     flex: 1;
     margin-left: 280px;
     padding: 30px;
-    background: #f5f7fa;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    min-height: 100vh;
 }
 
 .page-header {
-    background: white;
-    padding: 25px;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    background: linear-gradient(135deg, #fdf4d7 0%, #d4e7e6 35%, #f1bdb5 70%, #d8d3e9 100%);
+    padding: 25px 30px;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     margin-bottom: 25px;
 }
 
 .page-header h2 {
-    color: #1e3c72;
+    color: #1a2b48;
     font-size: 28px;
-    margin-bottom: 10px;
+    font-weight: 800;
+    margin-bottom: 8px;
 }
 
 .page-header p {
@@ -122,49 +167,59 @@ body {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: linear-gradient(135deg, #d4e7e6 0%, #4a90e2 100%);
+    color: #1a2b48;
+    font-weight: 700;
 }
 
 .btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 6px 20px rgba(74, 144, 226, 0.3);
+    filter: brightness(1.05);
 }
 
 .btn-success {
-    background: #4caf50;
+    background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
     color: white;
+    font-weight: 700;
 }
 
 .btn-success:hover {
-    background: #45a049;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 184, 148, 0.4);
 }
 
 .btn-danger {
-    background: #f44336;
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
     color: white;
+    font-weight: 700;
 }
 
 .btn-danger:hover {
-    background: #da190b;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(231, 76, 60, 0.4);
 }
 
 .btn-secondary {
-    background: #2196f3;
+    background: linear-gradient(135deg, #636e72 0%, #2d3436 100%);
     color: white;
+    font-weight: 700;
 }
 
 .btn-secondary:hover {
-    background: #0b7dda;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(45, 52, 54, 0.4);
 }
 
 .btn-warning {
-    background: #ff9800;
-    color: white;
+    background: linear-gradient(135deg, #fdcb6e 0%, #f39c12 100%);
+    color: #1a2b48;
+    font-weight: 700;
 }
 
 .btn-warning:hover {
-    background: #e68900;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(243, 156, 18, 0.4);
 }
 
 /* Table */
@@ -182,8 +237,8 @@ table {
 }
 
 thead {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: linear-gradient(135deg, #d4e7e6 0%, #4a90e2 100%);
+    color: #1a2b48;
 }
 
 th {
@@ -303,7 +358,8 @@ tbody tr:last-child td {
 .form-group select:focus,
 .form-group textarea:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: #4a90e2;
+    box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
 }
 
 .form-actions {
@@ -561,16 +617,21 @@ tbody tr:last-child td {
     position: fixed;
     top: 20px;
     right: 20px;
-    padding: 10px 16px;
-    background: #e74c3c;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 50px;
     cursor: pointer;
     z-index: 999;
+    font-weight: 700;
+    font-size: 14px;
+    box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
+    transition: all 0.3s;
 }
 
 .logout-btn:hover {
-    background: #c0392b;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(231, 76, 60, 0.5);
 }
 
