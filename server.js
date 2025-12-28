@@ -1225,9 +1225,11 @@ app.get('/api/hoadon', async (req, res) => {
         const pool = await poolPromise;
         const result = await pool.request()
             .query(`SELECT h.id, h.maHD, h.ngayLap, h.idNV, h.idKH, h.idKM, h.tongTien, h.loaiGiaoDich,
+                    ISNULL(h.diemDaDung, 0) as diemDaDung,
                     nv.maNV, nv.tenNV as tenNhanVien,
                     kh.maKH, kh.tenKH as tenKhachHang,
-                    km.maKM, km.tenKM as tenKhuyenMai
+                    km.maKM, km.tenKM as tenKhuyenMai, km.phantramGiam,
+                    (SELECT ISNULL(SUM(thanhTien), 0) FROM CHITIET_HD WHERE idHD = h.id) as subtotal
                     FROM HOADON h
                     LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
                     LEFT JOIN KHACHHANG kh ON h.idKH = kh.id
@@ -1287,7 +1289,7 @@ app.get('/api/hoadon/:id', async (req, res) => {
 
 // POST
 app.post('/api/hoadon', async (req, res) => {
-    const { idNV, idKH, idKM, loaiGiaoDich } = req.body;
+    const { idNV, idKH, idKM, loaiGiaoDich, diemDaDung } = req.body;
     if (!idNV || !idKH) {
         return res.status(400).json({
             success: false,
@@ -1296,17 +1298,63 @@ app.post('/api/hoadon', async (req, res) => {
     }
     try {
         const pool = await poolPromise;
-        const result = await pool.request()
-            .input('idNV', sql.Int, idNV)
-            .input('idKH', sql.Int, idKH)
-            .input('idKM', sql.Int, idKM || null)
-            .input('loaiGiaoDich', sql.NVarChar(20), loaiGiaoDich || 'Bán hàng')
-            .query('INSERT INTO HOADON (idNV, idKH, idKM, loaiGiaoDich) OUTPUT INSERTED.id, INSERTED.maHD, INSERTED.ngayLap, INSERTED.idNV, INSERTED.idKH, INSERTED.idKM, INSERTED.tongTien, INSERTED.loaiGiaoDich VALUES (@idNV, @idKH, @idKM, @loaiGiaoDich)');
+        
+        // Nếu có điểm đã dùng, trừ điểm của khách hàng trước
+        if (diemDaDung && diemDaDung > 0 && idKH) {
+            const customerResult = await pool.request()
+                .input('idKH', sql.Int, idKH)
+                .query('SELECT diemtichluy FROM KHACHHANG WHERE id = @idKH');
+            
+            if (customerResult.recordset.length > 0) {
+                const currentPoints = customerResult.recordset[0].diemtichluy || 0;
+                if (currentPoints < diemDaDung) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Khách hàng không đủ điểm. Hiện có: ${currentPoints}, yêu cầu: ${diemDaDung}`
+                    });
+                }
+                
+                // Trừ điểm
+                await pool.request()
+                    .input('idKH', sql.Int, idKH)
+                    .input('diemDaDung', sql.Int, diemDaDung)
+                    .query('UPDATE KHACHHANG SET diemtichluy = diemtichluy - @diemDaDung WHERE id = @idKH');
+            }
+        }
+        
+        // Tạo hóa đơn (lưu điểm đã dùng nếu có)
+        // Note: Cần chạy ALTER TABLE HOADON ADD diemDaDung INT DEFAULT 0; trước
+        let result;
+        if (diemDaDung && diemDaDung > 0) {
+            result = await pool.request()
+                .input('idNV', sql.Int, idNV)
+                .input('idKH', sql.Int, idKH)
+                .input('idKM', sql.Int, idKM || null)
+                .input('loaiGiaoDich', sql.NVarChar(20), loaiGiaoDich || 'Bán hàng')
+                .input('diemDaDung', sql.Int, diemDaDung)
+                .query(`INSERT INTO HOADON (idNV, idKH, idKM, loaiGiaoDich, diemDaDung) 
+                        OUTPUT INSERTED.id, INSERTED.maHD, INSERTED.ngayLap, INSERTED.idNV, INSERTED.idKH, INSERTED.idKM, INSERTED.tongTien, INSERTED.loaiGiaoDich, INSERTED.diemDaDung 
+                        VALUES (@idNV, @idKH, @idKM, @loaiGiaoDich, @diemDaDung)`);
+        } else {
+            result = await pool.request()
+                .input('idNV', sql.Int, idNV)
+                .input('idKH', sql.Int, idKH)
+                .input('idKM', sql.Int, idKM || null)
+                .input('loaiGiaoDich', sql.NVarChar(20), loaiGiaoDich || 'Bán hàng')
+                .query(`INSERT INTO HOADON (idNV, idKH, idKM, loaiGiaoDich) 
+                        OUTPUT INSERTED.id, INSERTED.maHD, INSERTED.ngayLap, INSERTED.idNV, INSERTED.idKH, INSERTED.idKM, INSERTED.tongTien, INSERTED.loaiGiaoDich 
+                        VALUES (@idNV, @idKH, @idKM, @loaiGiaoDich)`);
+        }
+
+        const invoiceData = result.recordset[0];
+        if (!invoiceData.diemDaDung) {
+            invoiceData.diemDaDung = diemDaDung || 0;
+        }
 
         res.status(201).json({
             success: true,
             message: 'Thêm hóa đơn thành công',
-            data: result.recordset[0]
+            data: invoiceData
         });
     } catch (err) {
         res.status(500).json({
@@ -1320,7 +1368,7 @@ app.post('/api/hoadon', async (req, res) => {
 // PUT
 app.put('/api/hoadon/:id', async (req, res) => {
     const { id } = req.params;
-    const { idNV, idKH, idKM, loaiGiaoDich } = req.body;
+    const { idNV, idKH, idKM, loaiGiaoDich, diemDaDung } = req.body;
     if (!idNV || !idKH) {
         return res.status(400).json({
             success: false,
@@ -1350,14 +1398,28 @@ app.put('/api/hoadon/:id', async (req, res) => {
             }
         }
         
-        const result = await pool.request()
+        // Áp dụng giảm giá từ điểm (1 điểm = 1000đ)
+        if (diemDaDung && diemDaDung > 0) {
+            finalTongTien = Math.max(0, finalTongTien - (diemDaDung * 1000));
+        }
+        
+        // Update hóa đơn, bao gồm diemDaDung nếu có
+        let updateQuery = 'UPDATE HOADON SET idNV = @idNV, idKH = @idKH, idKM = @idKM, tongTien = @tongTien, loaiGiaoDich = @loaiGiaoDich';
+        const request = pool.request()
             .input('id', sql.Int, id)
             .input('idNV', sql.Int, idNV)
             .input('idKH', sql.Int, idKH)
             .input('idKM', sql.Int, idKM || null)
             .input('tongTien', sql.Money, finalTongTien)
-            .input('loaiGiaoDich', sql.NVarChar(20), loaiGiaoDich || 'Bán hàng')
-            .query('UPDATE HOADON SET idNV = @idNV, idKH = @idKH, idKM = @idKM, tongTien = @tongTien, loaiGiaoDich = @loaiGiaoDich WHERE id = @id');
+            .input('loaiGiaoDich', sql.NVarChar(20), loaiGiaoDich || 'Bán hàng');
+        
+        if (diemDaDung !== undefined && diemDaDung !== null) {
+            updateQuery += ', diemDaDung = @diemDaDung';
+            request.input('diemDaDung', sql.Int, diemDaDung);
+        }
+        
+        updateQuery += ' WHERE id = @id';
+        const result = await request.query(updateQuery);
 
         if (result.rowsAffected[0] === 0) {
             return res.status(404).json({
@@ -1723,21 +1785,32 @@ async function recalculateInvoiceTotal(idHD) {
     
     const tongTien = totalResult.recordset[0].tongTien || 0;
     
-    // Get invoice discount
+    // Get invoice discount and points used
     const invoiceResult = await pool.request()
         .input('idHD', sql.Int, idHD)
-        .query('SELECT idKM FROM HOADON WHERE id = @idHD');
+        .query('SELECT idKM, ISNULL(diemDaDung, 0) as diemDaDung FROM HOADON WHERE id = @idHD');
     
     let finalTongTien = tongTien;
-    if (invoiceResult.recordset.length > 0 && invoiceResult.recordset[0].idKM) {
-        const idKM = invoiceResult.recordset[0].idKM;
-        const kmResult = await pool.request()
-            .input('idKM', sql.Int, idKM)
-            .query('SELECT phantramGiam FROM KHUYENMAI WHERE id = @idKM');
+    if (invoiceResult.recordset.length > 0) {
+        const invoice = invoiceResult.recordset[0];
         
-        if (kmResult.recordset.length > 0) {
-            const phantramGiam = kmResult.recordset[0].phantramGiam;
-            finalTongTien = tongTien * (1 - phantramGiam / 100);
+        // Áp dụng mã giảm giá
+        if (invoice.idKM) {
+            const idKM = invoice.idKM;
+            const kmResult = await pool.request()
+                .input('idKM', sql.Int, idKM)
+                .query('SELECT phantramGiam FROM KHUYENMAI WHERE id = @idKM');
+            
+            if (kmResult.recordset.length > 0) {
+                const phantramGiam = kmResult.recordset[0].phantramGiam;
+                finalTongTien = tongTien * (1 - phantramGiam / 100);
+            }
+        }
+        
+        // Áp dụng giảm giá từ điểm (1 điểm = 1000đ)
+        const diemDaDung = invoice.diemDaDung || 0;
+        if (diemDaDung > 0) {
+            finalTongTien = Math.max(0, finalTongTien - (diemDaDung * 1000));
         }
     }
     
@@ -1747,6 +1820,976 @@ async function recalculateInvoiceTotal(idHD) {
         .input('tongTien', sql.Money, finalTongTien)
         .query('UPDATE HOADON SET tongTien = @tongTien WHERE id = @idHD');
 }
+
+// ================== TRẢ HÀNG API ==================
+app.post('/api/hoadon/:id/tra-hang', async (req, res) => {
+    const { id } = req.params;
+    const { items } = req.body; // [{ idHang, soluong }]
+    
+    if (!items || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({
+            success: false,
+            message: 'Thiếu danh sách sản phẩm trả hàng'
+        });
+    }
+    
+    try {
+        const pool = await poolPromise;
+        
+        // Kiểm tra hóa đơn tồn tại
+        const invoiceResult = await pool.request()
+            .input('idHD', sql.Int, id)
+            .query('SELECT id FROM HOADON WHERE id = @idHD');
+        
+        if (invoiceResult.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy hóa đơn'
+            });
+        }
+        
+        // Kiểm tra và cộng lại hàng vào kho
+        for (const item of items) {
+            const { idHang, soluong } = item;
+            
+            // Kiểm tra chi tiết hóa đơn
+            const detailResult = await pool.request()
+                .input('idHD', sql.Int, id)
+                .input('idHang', sql.Int, idHang)
+                .query('SELECT soluong FROM CHITIET_HD WHERE idHD = @idHD AND idHang = @idHang');
+            
+            if (detailResult.recordset.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: `Không tìm thấy sản phẩm trong hóa đơn`
+                });
+            }
+            
+            const invoiceQty = detailResult.recordset[0].soluong;
+            if (soluong > invoiceQty) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Số lượng trả (${soluong}) vượt quá số lượng đã bán (${invoiceQty})`
+                });
+            }
+            
+            // Cộng lại hàng vào kho
+            await pool.request()
+                .input('idHang', sql.Int, idHang)
+                .input('soluong', sql.Int, soluong)
+                .query('UPDATE HANGHOA SET soluong = soluong + @soluong WHERE id = @idHang');
+            
+            // Cập nhật hoặc xóa chi tiết hóa đơn
+            if (soluong === invoiceQty) {
+                // Xóa nếu trả hết
+                await pool.request()
+                    .input('idHD', sql.Int, id)
+                    .input('idHang', sql.Int, idHang)
+                    .query('DELETE FROM CHITIET_HD WHERE idHD = @idHD AND idHang = @idHang');
+            } else {
+                // Giảm số lượng
+                await pool.request()
+                    .input('idHD', sql.Int, id)
+                    .input('idHang', sql.Int, idHang)
+                    .input('soluong', sql.Int, invoiceQty - soluong)
+                    .query('UPDATE CHITIET_HD SET soluong = @soluong, dongia = dongia WHERE idHD = @idHD AND idHang = @idHang');
+            }
+        }
+        
+        // Recalculate invoice total
+        await recalculateInvoiceTotal(id);
+        
+        res.status(200).json({
+            success: true,
+            message: 'Trả hàng thành công',
+            data: { idHD: parseInt(id), items }
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi trả hàng',
+            error: err.message
+        });
+    }
+});
+
+// ================== ĐỔI HÀNG API ==================
+app.post('/api/hoadon/:id/doi-hang', async (req, res) => {
+    const { id } = req.params;
+    const { idHangCu, idHangMoi, soluong } = req.body;
+    
+    if (!idHangCu || !idHangMoi || !soluong) {
+        return res.status(400).json({
+            success: false,
+            message: 'Thiếu thông tin: idHangCu, idHangMoi, soluong'
+        });
+    }
+    
+    try {
+        const pool = await poolPromise;
+        
+        // Kiểm tra hóa đơn và chi tiết cũ
+        const oldDetailResult = await pool.request()
+            .input('idHD', sql.Int, id)
+            .input('idHangCu', sql.Int, idHangCu)
+            .query('SELECT soluong, dongia FROM CHITIET_HD WHERE idHD = @idHD AND idHang = @idHangCu');
+        
+        if (oldDetailResult.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy sản phẩm cũ trong hóa đơn'
+            });
+        }
+        
+        const oldDetail = oldDetailResult.recordset[0];
+        if (soluong > oldDetail.soluong) {
+            return res.status(400).json({
+                success: false,
+                message: `Số lượng đổi (${soluong}) vượt quá số lượng đã bán (${oldDetail.soluong})`
+            });
+        }
+        
+        // Kiểm tra tồn kho hàng mới
+        const newStockResult = await pool.request()
+            .input('idHangMoi', sql.Int, idHangMoi)
+            .query('SELECT soluong, giaban FROM HANGHOA WHERE id = @idHangMoi');
+        
+        if (newStockResult.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy hàng hóa mới'
+            });
+        }
+        
+        const newStock = newStockResult.recordset[0];
+        if (newStock.soluong < soluong) {
+            return res.status(400).json({
+                success: false,
+                message: `Số lượng trong kho không đủ. Hiện có: ${newStock.soluong}, yêu cầu: ${soluong}`
+            });
+        }
+        
+        // Cộng lại hàng cũ vào kho
+        await pool.request()
+            .input('idHangCu', sql.Int, idHangCu)
+            .input('soluong', sql.Int, soluong)
+            .query('UPDATE HANGHOA SET soluong = soluong + @soluong WHERE id = @idHangCu');
+        
+        // Trừ hàng mới khỏi kho
+        await pool.request()
+            .input('idHangMoi', sql.Int, idHangMoi)
+            .input('soluong', sql.Int, soluong)
+            .query('UPDATE HANGHOA SET soluong = soluong - @soluong WHERE id = @idHangMoi');
+        
+        // Cập nhật chi tiết hóa đơn
+        if (soluong === oldDetail.soluong) {
+            // Đổi toàn bộ: xóa cũ, thêm mới
+            await pool.request()
+                .input('idHD', sql.Int, id)
+                .input('idHangCu', sql.Int, idHangCu)
+                .query('DELETE FROM CHITIET_HD WHERE idHD = @idHD AND idHang = @idHangCu');
+            
+            const newTongtien = soluong * newStock.giaban;
+            await pool.request()
+                .input('idHD', sql.Int, id)
+                .input('idHangMoi', sql.Int, idHangMoi)
+                .input('soluong', sql.Int, soluong)
+                .input('dongia', sql.Money, newStock.giaban)
+                .query('INSERT INTO CHITIET_HD (idHD, idHang, soluong, dongia) VALUES (@idHD, @idHangMoi, @soluong, @dongia)');
+        } else {
+            // Đổi một phần: giảm cũ, thêm mới
+            const remainingQty = oldDetail.soluong - soluong;
+            await pool.request()
+                .input('idHD', sql.Int, id)
+                .input('idHangCu', sql.Int, idHangCu)
+                .input('soluong', sql.Int, remainingQty)
+                .query('UPDATE CHITIET_HD SET soluong = @soluong WHERE idHD = @idHD AND idHang = @idHangCu');
+            
+            // Kiểm tra xem hàng mới đã có trong hóa đơn chưa
+            const existingNewDetail = await pool.request()
+                .input('idHD', sql.Int, id)
+                .input('idHangMoi', sql.Int, idHangMoi)
+                .query('SELECT soluong, dongia FROM CHITIET_HD WHERE idHD = @idHD AND idHang = @idHangMoi');
+            
+            if (existingNewDetail.recordset.length > 0) {
+                // Cộng thêm vào chi tiết đã có
+                const newQty = existingNewDetail.recordset[0].soluong + soluong;
+                await pool.request()
+                    .input('idHD', sql.Int, id)
+                    .input('idHangMoi', sql.Int, idHangMoi)
+                    .input('soluong', sql.Int, newQty)
+                    .query('UPDATE CHITIET_HD SET soluong = @soluong WHERE idHD = @idHD AND idHang = @idHangMoi');
+            } else {
+                // Thêm mới
+                const newTongtien = soluong * newStock.giaban;
+                await pool.request()
+                    .input('idHD', sql.Int, id)
+                    .input('idHangMoi', sql.Int, idHangMoi)
+                    .input('soluong', sql.Int, soluong)
+                    .input('dongia', sql.Money, newStock.giaban)
+                    .query('INSERT INTO CHITIET_HD (idHD, idHang, soluong, dongia) VALUES (@idHD, @idHangMoi, @soluong, @dongia)');
+            }
+        }
+        
+        // Recalculate invoice total
+        await recalculateInvoiceTotal(id);
+        
+        res.status(200).json({
+            success: true,
+            message: 'Đổi hàng thành công',
+            data: { idHD: parseInt(id), idHangCu, idHangMoi, soluong }
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi đổi hàng',
+            error: err.message
+        });
+    }
+});
+
+// ================== EXPORT INVOICE API ==================
+app.get('/api/hoadon/:id/export', async (req, res) => {
+    const { id } = req.params;
+    const { format } = req.query; // 'json' or 'excel'
+    
+    try {
+        const pool = await poolPromise;
+        
+        // Get invoice data with all related information
+        const invoiceResult = await pool.request()
+            .input('idHD', sql.Int, id)
+            .query(`SELECT h.id, h.maHD, h.ngayLap, h.tongTien, h.idKM, h.loaiGiaoDich,
+                    ISNULL(h.diemDaDung, 0) as diemDaDung,
+                    nv.maNV, nv.tenNV as tenNhanVien,
+                    kh.maKH, kh.tenKH as tenKhachHang, kh.diachi, kh.sdt,
+                    km.maKM, km.tenKM as tenKhuyenMai, km.phantramGiam
+                    FROM HOADON h
+                    LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                    LEFT JOIN KHACHHANG kh ON h.idKH = kh.id
+                    LEFT JOIN KHUYENMAI km ON h.idKM = km.id
+                    WHERE h.id = @idHD`);
+        
+        if (invoiceResult.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy hóa đơn'
+            });
+        }
+        
+        const invoice = invoiceResult.recordset[0];
+        
+        // Get invoice details with product information
+        const detailsResult = await pool.request()
+            .input('idHD', sql.Int, id)
+            .query(`SELECT cthd.idHang, cthd.soluong, cthd.dongia, cthd.thanhTien,
+                    hh.maHang, hh.tenHang
+                    FROM CHITIET_HD cthd
+                    INNER JOIN HANGHOA hh ON cthd.idHang = hh.id
+                    WHERE cthd.idHD = @idHD
+                    ORDER BY hh.maHang`);
+        
+        const details = detailsResult.recordset;
+        
+        // Calculate amounts
+        const subtotal = details.reduce((sum, item) => sum + (parseFloat(item.thanhTien) || 0), 0);
+        const tienGiamGiaCode = invoice.idKM ? (subtotal * (invoice.phantramGiam || 0) / 100) : 0;
+        const diemDaDung = invoice.diemDaDung || 0;
+        const tienGiamGiaDiem = diemDaDung * 1000; // 1 điểm = 1000đ
+        const thanhTien = parseFloat(invoice.tongTien) || 0;
+        
+        // Prepare response data
+        const invoiceData = {
+            thongTinHoaDon: {
+                maHD: invoice.maHD,
+                ngaylap: invoice.ngayLap,
+                nhanVien: {
+                    maNV: invoice.maNV,
+                    tenNV: invoice.tenNhanVien
+                },
+                khachHang: invoice.maKH ? {
+                    maKH: invoice.maKH,
+                    tenKH: invoice.tenKhachHang,
+                    diachi: invoice.diachi,
+                    sdt: invoice.sdt
+                } : null,
+                maGiamGia: invoice.maKM ? {
+                    maKM: invoice.maKM,
+                    tenKM: invoice.tenKhuyenMai,
+                    phantramgiam: invoice.phantramGiam
+                } : null,
+                tongTien: subtotal,
+                tienGiamGiaCode: tienGiamGiaCode,
+                tienGiamGiaDiem: tienGiamGiaDiem,
+                thanhTien: thanhTien
+            },
+            chiTietHangHoa: details.map((item, index) => ({
+                stt: index + 1,
+                maHang: item.maHang,
+                tenHang: item.tenHang,
+                soluong: item.soluong,
+                dongia: parseFloat(item.dongia),
+                tongtien: parseFloat(item.thanhTien)
+            }))
+        };
+        
+        // Return JSON or Excel based on format parameter
+        if (format === 'excel') {
+            // Create Excel file
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Hóa Đơn');
+            
+            // Set column widths
+            worksheet.columns = [
+                { width: 10 }, // STT
+                { width: 15 }, // Mã hàng
+                { width: 30 }, // Tên hàng
+                { width: 12 }, // Số lượng
+                { width: 15 }, // Đơn giá
+                { width: 15 }  // Thành tiền
+            ];
+            
+            // Header row
+            worksheet.mergeCells('A1:F1');
+            worksheet.getCell('A1').value = 'HÓA ĐƠN BÁN HÀNG';
+            worksheet.getCell('A1').font = { size: 16, bold: true };
+            worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+            
+            // Invoice info
+            worksheet.mergeCells('A2:F2');
+            worksheet.getCell('A2').value = `Mã hóa đơn: ${invoice.maHD} | Ngày lập: ${new Date(invoice.ngayLap).toLocaleDateString('vi-VN')}`;
+            worksheet.getCell('A2').alignment = { horizontal: 'center' };
+            
+            // Customer info
+            if (invoice.tenKhachHang) {
+                worksheet.mergeCells('A3:F3');
+                worksheet.getCell('A3').value = `Khách hàng: ${invoice.tenKhachHang}${invoice.diachi ? ' | Địa chỉ: ' + invoice.diachi : ''}${invoice.sdt ? ' | SĐT: ' + invoice.sdt : ''}`;
+            }
+            
+            // Staff info
+            worksheet.mergeCells('A4:F4');
+            worksheet.getCell('A4').value = `Nhân viên: ${invoice.tenNhanVien || 'N/A'}`;
+            
+            // Discount code
+            if (invoice.maKM) {
+                worksheet.mergeCells('A5:F5');
+                worksheet.getCell('A5').value = `Mã giảm giá: ${invoice.maKM} (${invoice.phantramGiam}%)${invoice.tenKhuyenMai ? ' - ' + invoice.tenKhuyenMai : ''}`;
+                worksheet.getCell('A5').font = { color: { argb: 'FF0066CC' } };
+            }
+            
+            // Empty row
+            worksheet.getRow(6).height = 5;
+            
+            // Table header
+            const headerRow = worksheet.getRow(7);
+            headerRow.values = ['STT', 'Mã hàng', 'Tên hàng', 'Số lượng', 'Đơn giá', 'Thành tiền'];
+            headerRow.font = { bold: true };
+            headerRow.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF667EEA' }
+            };
+            headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+            headerRow.height = 25;
+            
+            // Data rows
+            details.forEach((item, index) => {
+                const row = worksheet.getRow(8 + index);
+                row.values = [
+                    index + 1,
+                    item.maHang,
+                    item.tenHang,
+                    item.soluong,
+                    parseFloat(item.dongia).toLocaleString('vi-VN'),
+                    parseFloat(item.thanhTien).toLocaleString('vi-VN')
+                ];
+                row.getCell(5).numFmt = '#,##0';
+                row.getCell(6).numFmt = '#,##0';
+            });
+            
+            // Summary row
+            const summaryRowIndex = 8 + details.length;
+            
+            worksheet.mergeCells(`A${summaryRowIndex}:D${summaryRowIndex}`);
+            worksheet.getCell(`A${summaryRowIndex}`).value = 'Tổng tiền:';
+            worksheet.getCell(`A${summaryRowIndex}`).font = { bold: true };
+            worksheet.getCell(`E${summaryRowIndex}`).value = subtotal.toLocaleString('vi-VN');
+            worksheet.getCell(`E${summaryRowIndex}`).numFmt = '#,##0';
+            worksheet.getCell(`E${summaryRowIndex}`).font = { bold: true };
+            
+            let currentRow = summaryRowIndex + 1;
+            
+            if (tienGiamGiaCode > 0) {
+                worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
+                worksheet.getCell(`A${currentRow}`).value = 'Giảm giá (Mã):';
+                worksheet.getCell(`E${currentRow}`).value = '-' + tienGiamGiaCode.toLocaleString('vi-VN');
+                worksheet.getCell(`E${currentRow}`).numFmt = '#,##0';
+                worksheet.getCell(`E${currentRow}`).font = { color: { argb: 'FFCC0000' } };
+                currentRow++;
+            }
+            
+            if (tienGiamGiaDiem > 0) {
+                worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
+                worksheet.getCell(`A${currentRow}`).value = 'Giảm giá (Điểm):';
+                worksheet.getCell(`E${currentRow}`).value = '-' + tienGiamGiaDiem.toLocaleString('vi-VN');
+                worksheet.getCell(`E${currentRow}`).numFmt = '#,##0';
+                worksheet.getCell(`E${currentRow}`).font = { color: { argb: 'FF059669' } };
+                currentRow++;
+            }
+            
+            const finalRowIndex = currentRow;
+            worksheet.mergeCells(`A${finalRowIndex}:D${finalRowIndex}`);
+            worksheet.getCell(`A${finalRowIndex}`).value = 'Thành tiền:';
+            worksheet.getCell(`A${finalRowIndex}`).font = { size: 12, bold: true };
+            worksheet.getCell(`E${finalRowIndex}`).value = thanhTien.toLocaleString('vi-VN');
+            worksheet.getCell(`E${finalRowIndex}`).numFmt = '#,##0';
+            worksheet.getCell(`E${finalRowIndex}`).font = { size: 12, bold: true };
+            
+            // Footer
+            worksheet.mergeCells(`A${finalRowIndex + 2}:F${finalRowIndex + 2}`);
+            worksheet.getCell(`A${finalRowIndex + 2}`).value = 'Cảm ơn quý khách đã sử dụng dịch vụ!';
+            worksheet.getCell(`A${finalRowIndex + 2}`).alignment = { horizontal: 'center' };
+            worksheet.getCell(`A${finalRowIndex + 2}`).font = { italic: true };
+            
+            // Set response headers
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename="HoaDon_${invoice.maHD}.xlsx"`);
+            
+            // Write to response
+            await workbook.xlsx.write(res);
+            res.end();
+        } else {
+            // Return JSON
+            res.status(200).json({
+                success: true,
+                data: invoiceData
+            });
+        }
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi xuất hóa đơn',
+            error: err.message
+        });
+    }
+});
+
+// ================== PDF EXPORT API ==================
+app.get('/api/hoadon/:id/pdf', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pool = await poolPromise;
+
+        // Get invoice data
+        const invoiceResult = await pool.request()
+            .input('idHD', sql.Int, id)
+            .query(`SELECT h.id, h.maHD, h.ngayLap, h.tongTien, h.idKM, h.loaiGiaoDich,
+                    ISNULL(h.diemDaDung, 0) as diemDaDung,
+                    nv.tenNV, kh.tenKH, kh.diachi, kh.sdt,
+                    km.maKM, km.phantramGiam
+                    FROM HOADON h
+                    LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                    LEFT JOIN KHACHHANG kh ON h.idKH = kh.id
+                    LEFT JOIN KHUYENMAI km ON h.idKM = km.id
+                    WHERE h.id = @idHD`);
+
+        if (invoiceResult.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy hóa đơn'
+            });
+        }
+
+        const invoice = invoiceResult.recordset[0];
+
+        // Get invoice details
+        const detailsResult = await pool.request()
+            .input('idHD', sql.Int, id)
+            .query(`SELECT cthd.idHang, cthd.soluong, cthd.dongia, cthd.thanhTien,
+                    hh.maHang, hh.tenHang
+                    FROM CHITIET_HD cthd
+                    INNER JOIN HANGHOA hh ON cthd.idHang = hh.id
+                    WHERE cthd.idHD = @idHD
+                    ORDER BY hh.maHang`);
+
+        const details = detailsResult.recordset;
+
+        // Calculate subtotal from details
+        const subtotal = details.reduce((sum, item) => sum + (parseFloat(item.thanhTien) || 0), 0);
+        const tienGiamGiaCode = invoice.idKM ? (subtotal * (invoice.phantramGiam || 0) / 100) : 0;
+        const diemDaDung = invoice.diemDaDung || 0;
+        const tienGiamGiaDiem = diemDaDung * 1000; // 1 điểm = 1000đ
+        const thanhTien = parseFloat(invoice.tongTien) || 0;
+
+        // Create PDF with A4 portrait
+        const doc = new PDFDocument({
+            margin: 10,
+            size: 'A4',
+            layout: 'portrait',
+            info: {
+                Title: `Hoa Don ${invoice.maHD}`,
+                Author: 'FMSTYLE',
+                Subject: 'Hoa don ban hang'
+            }
+        });
+
+        // Font registration
+        const fontsDir = path.join(__dirname, 'fonts');
+        const windowsFontsDir = process.platform === 'win32'
+            ? path.join(process.env.WINDIR || 'C:\\Windows', 'Fonts')
+            : null;
+
+        let vietnameseFont = 'Times-Roman';
+        let vietnameseFontBold = 'Times-Bold';
+
+        const fontFiles = {
+            'NotoSans-Regular.ttf': 'NotoSans',
+            'NotoSans-Bold.ttf': 'NotoSansBold',
+            'Arial-Unicode-MS.ttf': 'ArialUnicode',
+            'Times-New-Roman.ttf': 'TimesNewRoman'
+        };
+
+        const windowsFontFiles = {
+            'arial.ttf': 'Arial',
+            'arialbd.ttf': 'ArialBold',
+            'times.ttf': 'TimesNewRoman',
+            'timesbd.ttf': 'TimesNewRomanBold',
+            'tahoma.ttf': 'Tahoma',
+            'tahomabd.ttf': 'TahomaBold'
+        };
+
+        for (const [filename, fontName] of Object.entries(fontFiles)) {
+            const fontPath = path.join(fontsDir, filename);
+            if (fs.existsSync(fontPath)) {
+                try {
+                    doc.registerFont(fontName, fontPath);
+                    if (filename.includes('Regular') || filename.includes('Arial') || filename.includes('Times-New')) {
+                        vietnameseFont = fontName;
+                    }
+                    if (filename.includes('Bold')) {
+                        vietnameseFontBold = fontName;
+                    }
+                } catch (e) {
+                    console.log(`Could not register font ${filename}:`, e.message);
+                }
+            }
+        }
+
+        if (windowsFontsDir && fs.existsSync(windowsFontsDir) && vietnameseFont === 'Times-Roman') {
+            const preferredFonts = ['arial.ttf', 'tahoma.ttf', 'times.ttf'];
+            const preferredBoldFonts = ['arialbd.ttf', 'tahomabd.ttf', 'timesbd.ttf'];
+
+            for (const preferredFont of preferredFonts) {
+                if (windowsFontFiles[preferredFont]) {
+                    const fontPath = path.join(windowsFontsDir, preferredFont);
+                    if (fs.existsSync(fontPath)) {
+                        try {
+                            const fontName = windowsFontFiles[preferredFont];
+                            doc.registerFont(fontName, fontPath);
+                            vietnameseFont = fontName;
+                            break;
+                        } catch (e) {
+                            console.log(`Could not register Windows font ${preferredFont}:`, e.message);
+                        }
+                    }
+                }
+            }
+
+            for (const preferredBoldFont of preferredBoldFonts) {
+                if (windowsFontFiles[preferredBoldFont]) {
+                    const fontPath = path.join(windowsFontsDir, preferredBoldFont);
+                    if (fs.existsSync(fontPath)) {
+                        try {
+                            const fontName = windowsFontFiles[preferredBoldFont];
+                            doc.registerFont(fontName, fontPath);
+                            vietnameseFontBold = fontName;
+                            break;
+                        } catch (e) {
+                            console.log(`Could not register Windows bold font ${preferredBoldFont}:`, e.message);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (vietnameseFont === 'Times-Roman') {
+            console.warn('Warning: Vietnamese font not found. PDF may display Vietnamese text incorrectly.');
+        }
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="HoaDon_${invoice.maHD}.pdf"`);
+        doc.pipe(res);
+
+        // Helper functions
+        const safeText = (text) => {
+            if (text === null || text === undefined) return '';
+            try {
+                return String(text).normalize('NFC');
+            } catch (e) {
+                return String(text);
+            }
+        };
+
+        const formatCurrency = (amount) => {
+            return parseFloat(amount || 0).toLocaleString('vi-VN') + ' đ';
+        };
+
+        const formatDate = (date) => {
+            if (!date) return '';
+            const d = new Date(date);
+            return d.toLocaleDateString('vi-VN', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+        };
+
+        const pageWidth = 595.28;
+        const margin = 40;
+        const contentWidth = pageWidth - (margin * 2);
+
+        // Header with logo space
+        doc.fontSize(26)
+            .font(vietnameseFontBold)
+            .fillColor('#2563eb')
+            .text('HÓA ĐƠN BÁN HÀNG', margin, 50, { align: 'center' });
+
+        // Decorative line
+        doc.moveTo(margin, 90)
+            .lineTo(pageWidth - margin, 90)
+            .lineWidth(3)
+            .strokeColor('#3b82f6')
+            .stroke();
+
+        doc.moveTo(margin, 94)
+            .lineTo(pageWidth - margin, 94)
+            .lineWidth(1)
+            .strokeColor('#93c5fd')
+            .stroke();
+
+        // Invoice info in two columns
+        let yPos = 115;
+        doc.fontSize(10)
+            .font(vietnameseFont)
+            .fillColor('#374151');
+
+        // Left column
+        doc.font(vietnameseFontBold).text('Mã hóa đơn:', margin, yPos);
+        doc.font(vietnameseFont).text(safeText(invoice.maHD), margin + 90, yPos);
+
+        // Right column
+        doc.font(vietnameseFontBold).text('Ngày lập:', pageWidth / 2 + 20, yPos);
+        doc.font(vietnameseFont).text(formatDate(invoice.ngayLap), pageWidth / 2 + 90, yPos);
+
+        yPos += 25;
+
+        // Customer info section
+        if (invoice.tenKH) {
+            doc.rect(margin, yPos - 5, contentWidth, 1)
+                .fillColor('#e5e7eb')
+                .fill();
+
+            yPos += 10;
+
+            doc.fontSize(11)
+                .font(vietnameseFontBold)
+                .fillColor('#1f2937')
+                .text('THÔNG TIN KHÁCH HÀNG', margin, yPos);
+
+            yPos += 20;
+            doc.fontSize(10).font(vietnameseFont).fillColor('#374151');
+
+            // Customer name
+            doc.font(vietnameseFontBold).text('Khách hàng:', margin, yPos);
+            doc.font(vietnameseFont).text(safeText(invoice.tenKH), margin + 90, yPos);
+            yPos += 18;
+
+            // Address and phone in two columns
+            if (invoice.diachi) {
+                doc.font(vietnameseFontBold).text('Địa chỉ:', margin, yPos);
+                doc.font(vietnameseFont).text(safeText(invoice.diachi), margin + 90, yPos, {
+                    width: contentWidth / 2 - 100
+                });
+            }
+
+            if (invoice.sdt) {
+                const phoneX = invoice.diachi ? pageWidth / 2 + 20 : margin;
+                const phoneValueX = invoice.diachi ? pageWidth / 2 + 60 : margin + 90;
+                doc.font(vietnameseFontBold).text('SĐT:', phoneX, yPos);
+                doc.font(vietnameseFont).text(safeText(invoice.sdt), phoneValueX, yPos);
+            }
+
+            yPos += 35;
+        }
+
+        // Staff info
+        doc.rect(margin, yPos - 5, contentWidth, 1)
+            .fillColor('#000000')
+            .fill();
+
+        yPos += 10;
+        doc.font(vietnameseFontBold).text('Nhân viên:', margin, yPos);
+        doc.font(vietnameseFont).text(safeText(invoice.tenNV || 'N/A'), margin + 90, yPos);
+
+        // Discount code
+        if (invoice.maKM) {
+            doc.font(vietnameseFontBold).text('Mã giảm giá:', pageWidth / 2 + 20, yPos);
+            doc.font(vietnameseFont)
+                .fillColor('#0891b2')
+                .text(`${safeText(invoice.maKM)} (${invoice.phantramGiam}%)`,
+                    pageWidth / 2 + 95, yPos);
+            doc.fillColor('#374151');
+        }
+
+        yPos += 30;
+
+        // Table
+        const tableTop = yPos;
+        const colWidths = [35, 65, 180, 50, 85, 100];
+        const colX = [margin];
+        for (let i = 1; i < colWidths.length; i++) {
+            colX[i] = colX[i - 1] + colWidths[i - 1];
+        }
+
+        // Table header
+        doc.rect(margin, tableTop, contentWidth, 28)
+            .fillAndStroke('#3b82f6', '#2563eb');
+
+        doc.fontSize(10)
+            .font(vietnameseFontBold)
+            .fillColor('#ffffff');
+
+        const headerY = tableTop + 10;
+        doc.text('STT', colX[0] + 5, headerY, { width: colWidths[0] - 10, align: 'center' })
+            .text('Mã hàng', colX[1] + 5, headerY, { width: colWidths[1] - 10 })
+            .text('Tên hàng', colX[2] + 5, headerY, { width: colWidths[2] - 10 })
+            .text('SL', colX[3] + 5, headerY, { width: colWidths[3] - 10, align: 'center' })
+            .text('Đơn giá', colX[4] + 5, headerY, { width: colWidths[4] - 10, align: 'right' })
+            .text('Thành tiền', colX[5] + 5, headerY, { width: colWidths[5] - 10, align: 'right' });
+
+        // Table rows
+        yPos = tableTop + 33;
+        doc.fontSize(9.5)
+            .font(vietnameseFont)
+            .fillColor('#1f2937');
+
+        details.forEach((item, index) => {
+            if (yPos > 720) {
+                doc.addPage();
+                yPos = 50;
+
+                // Redraw header
+                doc.rect(margin, yPos, contentWidth, 28)
+                    .fillAndStroke('#3b82f6', '#2563eb');
+                doc.fontSize(10).font(vietnameseFontBold).fillColor('#ffffff');
+                const newHeaderY = yPos + 10;
+                doc.text('STT', colX[0] + 5, newHeaderY, { width: colWidths[0] - 10, align: 'center' })
+                    .text('Mã hàng', colX[1] + 5, newHeaderY, { width: colWidths[1] - 10 })
+                    .text('Tên hàng', colX[2] + 5, newHeaderY, { width: colWidths[2] - 10 })
+                    .text('SL', colX[3] + 5, newHeaderY, { width: colWidths[3] - 10, align: 'center' })
+                    .text('Đơn giá', colX[4] + 5, newHeaderY, { width: colWidths[4] - 10, align: 'right' })
+                    .text('Thành tiền', colX[5] + 5, newHeaderY, { width: colWidths[5] - 10, align: 'right' });
+                yPos += 33;
+                doc.fontSize(9.5).font(vietnameseFont).fillColor('#1f2937');
+            }
+
+            // Alternate row colors
+            if (index % 2 === 0) {
+                doc.rect(margin, yPos - 2, contentWidth, 22)
+                    .fillColor('#f9fafb')
+                    .fill();
+            }
+
+            const rowY = yPos + 4;
+            doc.fillColor('#1f2937')
+                .text((index + 1).toString(), colX[0] + 5, rowY, { width: colWidths[0] - 10, align: 'center' })
+                .text(safeText(item.maHang), colX[1] + 5, rowY, { width: colWidths[1] - 10 })
+                .text(safeText(item.tenHang || ''), colX[2] + 5, rowY, { width: colWidths[2] - 10 })
+                .text(item.soluong.toString(), colX[3] + 5, rowY, { width: colWidths[3] - 10, align: 'center' })
+                .text(formatCurrency(item.dongia), colX[4] + 5, rowY, { width: colWidths[4] - 10, align: 'right' })
+                .text(formatCurrency(item.thanhTien), colX[5] + 5, rowY, { width: colWidths[5] - 10, align: 'right' });
+
+            yPos += 22;
+        });
+
+        // Table border
+        doc.rect(margin, tableTop, contentWidth, yPos - tableTop)
+            .lineWidth(1)
+            .strokeColor('#d1d5db')
+            .stroke();
+
+        // Summary section
+        yPos += 25;
+        const summaryBoxWidth = 240;
+        const summaryBoxLeft = pageWidth - margin - summaryBoxWidth;
+        
+        // Calculate summary height based on discounts
+        let summaryHeight = 70;
+        if (tienGiamGiaCode > 0) summaryHeight += 25;
+        if (tienGiamGiaDiem > 0) summaryHeight += 25;
+
+        // Summary box with gradient effect
+        doc.rect(summaryBoxLeft, yPos, summaryBoxWidth, summaryHeight)
+            .fillColor('#f8fafc')
+            .fillAndStroke('#f8fafc', '#cbd5e1');
+
+        doc.fontSize(10.5).font(vietnameseFont).fillColor('#374151');
+        let summaryY = yPos + 15;
+
+        // Total
+        doc.text('Tổng tiền:', summaryBoxLeft + 15, summaryY);
+        doc.font(vietnameseFontBold)
+            .text(formatCurrency(subtotal), summaryBoxLeft + 120, summaryY, {
+                width: 105,
+                align: 'right'
+            });
+
+        // Discount from code
+        if (tienGiamGiaCode > 0) {
+            summaryY += 25;
+            doc.font(vietnameseFont)
+                .fillColor('#dc2626')
+                .text('Giảm giá (Mã):', summaryBoxLeft + 15, summaryY);
+            doc.font(vietnameseFontBold)
+                .text('-' + formatCurrency(tienGiamGiaCode), summaryBoxLeft + 120, summaryY, {
+                    width: 105,
+                    align: 'right'
+                });
+        }
+
+        // Discount from points
+        if (tienGiamGiaDiem > 0) {
+            summaryY += 25;
+            doc.font(vietnameseFont)
+                .fillColor('#059669')
+                .text('Giảm giá (Điểm):', summaryBoxLeft + 15, summaryY);
+            doc.font(vietnameseFontBold)
+                .text('-' + formatCurrency(tienGiamGiaDiem), summaryBoxLeft + 120, summaryY, {
+                    width: 105,
+                    align: 'right'
+                });
+        }
+
+        // Final total
+        summaryY += 28;
+        doc.fontSize(12)
+            .font(vietnameseFontBold)
+            .fillColor('#1e40af')
+            .text('Thành tiền:', summaryBoxLeft + 15, summaryY);
+        doc.text(formatCurrency(thanhTien), summaryBoxLeft + 120, summaryY, {
+            width: 105,
+            align: 'right'
+        });
+
+        // Footer
+        const footerY = 770;
+        doc.fontSize(9)
+            .font(vietnameseFont)
+            .fillColor('#6b7280')
+            .text('Cảm ơn quý khách đã sử dụng dịch vụ!', margin, footerY, {
+                align: 'center',
+                width: contentWidth
+            });
+
+        doc.fontSize(8)
+            .text('FMSTYLE - Địa chỉ: 171 Bà Triệu, Huế - Hotline: 1900 9090',
+                margin, footerY + 15, {
+                align: 'center',
+                width: contentWidth
+            });
+
+        doc.end();
+
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi xuất PDF',
+            error: err.message
+        });
+    }
+});
+
+// ================== THỐNG KÊ DOANH THU API ==================
+app.get('/api/thongke/doanhthu', async (req, res) => {
+    const { period, startDate, endDate } = req.query; // period: 'day', 'week', 'month', 'quarter', 'year'
+    
+    try {
+        const pool = await poolPromise;
+        let query = '';
+        
+        if (period === 'day' && startDate && endDate) {
+            query = `SELECT 
+                        CAST(ngayLap AS DATE) as ngay,
+                        COUNT(*) as soHoaDon,
+                        SUM(tongTien) as tongDoanhThu
+                    FROM HOADON
+                    WHERE CAST(ngayLap AS DATE) BETWEEN @startDate AND @endDate
+                    GROUP BY CAST(ngayLap AS DATE)
+                    ORDER BY ngay DESC`;
+        } else if (period === 'week') {
+            query = `SELECT 
+                        DATEPART(YEAR, ngayLap) as nam,
+                        DATEPART(WEEK, ngayLap) as tuan,
+                        COUNT(*) as soHoaDon,
+                        SUM(tongTien) as tongDoanhThu
+                    FROM HOADON
+                    WHERE ngayLap >= DATEADD(WEEK, -12, GETDATE())
+                    GROUP BY DATEPART(YEAR, ngayLap), DATEPART(WEEK, ngayLap)
+                    ORDER BY nam DESC, tuan DESC`;
+        } else if (period === 'month') {
+            query = `SELECT 
+                        DATEPART(YEAR, ngayLap) as nam,
+                        DATEPART(MONTH, ngayLap) as thang,
+                        COUNT(*) as soHoaDon,
+                        SUM(tongTien) as tongDoanhThu
+                    FROM HOADON
+                    WHERE ngayLap >= DATEADD(MONTH, -12, GETDATE())
+                    GROUP BY DATEPART(YEAR, ngayLap), DATEPART(MONTH, ngayLap)
+                    ORDER BY nam DESC, thang DESC`;
+        } else if (period === 'quarter') {
+            query = `SELECT 
+                        DATEPART(YEAR, ngayLap) as nam,
+                        DATEPART(QUARTER, ngayLap) as quy,
+                        COUNT(*) as soHoaDon,
+                        SUM(tongTien) as tongDoanhThu
+                    FROM HOADON
+                    WHERE ngayLap >= DATEADD(YEAR, -3, GETDATE())
+                    GROUP BY DATEPART(YEAR, ngayLap), DATEPART(QUARTER, ngayLap)
+                    ORDER BY nam DESC, quy DESC`;
+        } else if (period === 'year') {
+            query = `SELECT 
+                        DATEPART(YEAR, ngayLap) as nam,
+                        COUNT(*) as soHoaDon,
+                        SUM(tongTien) as tongDoanhThu
+                    FROM HOADON
+                    GROUP BY DATEPART(YEAR, ngayLap)
+                    ORDER BY nam DESC`;
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: 'Thiếu thông tin period hoặc startDate/endDate'
+            });
+        }
+        
+        const request = pool.request();
+        if (startDate) request.input('startDate', sql.Date, startDate);
+        if (endDate) request.input('endDate', sql.Date, endDate);
+        
+        const result = await request.query(query);
+        
+        res.status(200).json({
+            success: true,
+            count: result.recordset.length,
+            data: result.recordset
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi thống kê doanh thu',
+            error: err.message
+        });
+    }
+});
 
 // ================== HOME PAGE ==================
 app.get('/', (req, res) => {

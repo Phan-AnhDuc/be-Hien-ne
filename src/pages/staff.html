@@ -41,6 +41,8 @@
             height: 100vh;
             border-right: 1px solid rgba(0, 0, 0, 0.1);
             overflow-y: auto;
+            z-index: 100;
+            pointer-events: auto;
         }
 
         .sidebar-header {
@@ -118,6 +120,11 @@
             gap: 12px;
             color: #4a5568;
             font-size: 14px;
+            user-select: none;
+            -webkit-user-select: none;
+            pointer-events: auto;
+            position: relative;
+            z-index: 10;
         }
 
         .menu-item:hover {
@@ -131,6 +138,10 @@
             border-left-color: #4a90e2;
             color: #1a2b48;
             font-weight: 700;
+        }
+        
+        .menu-item span {
+            pointer-events: none;
         }
 
         .logout-btn {
@@ -625,7 +636,7 @@
             width: 100%;
             height: 100%;
             background: rgba(0, 0, 0, 0.6);
-            z-index: 1000;
+            z-index: 10000;
             justify-content: center;
             align-items: center;
             backdrop-filter: blur(5px);
@@ -633,6 +644,10 @@
 
         .modal.active {
             display: flex;
+        }
+        
+        .modal.show {
+            display: flex !important;
         }
 
         .modal-content {
@@ -987,6 +1002,9 @@
             <div class="menu-item" onclick="showPage('statistics', this)">
                 <span>Thống Kê Doanh Thu</span>
             </div>
+            <div class="menu-item" onclick="showPage('phieunhap', this)">
+                <span>Phiếu Nhập Hàng</span>
+            </div>
             <button class="logout-btn" onclick="logout()">Đăng Xuất</button>
         </div>
 
@@ -1056,6 +1074,44 @@
                 <button class="btn btn-secondary" onclick="closeSuccessModal()">Đóng</button>
                 <button class="btn btn-success" onclick="printInvoice()">In Hóa Đơn</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Invoice Detail Modal -->
+    <div id="invoice-detail-modal" class="modal">
+        <div class="modal-content" style="max-width: 900px; width: 95%;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #d4e7e6 0%, #4a90e2 100%); color: white; border-radius: 12px 12px 0 0; margin: -25px -25px 20px -25px; padding: 20px 25px;">
+                <h3 style="color: white; margin: 0; font-size: 20px;">📄 Chi Tiết Hóa Đơn</h3>
+                <button class="close-btn" onclick="closeInvoiceDetailModal()" style="background: rgba(255,255,255,0.2); color: white;">×</button>
+            </div>
+            <div id="invoice-detail-body" style="max-height: 75vh; overflow-y: auto; padding: 0 5px;"></div>
+            <div class="form-actions" style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #f0f0f0;">
+                <button class="btn btn-secondary" onclick="closeInvoiceDetailModal()">Đóng</button>
+                <button class="btn btn-success" id="print-invoice-btn" onclick="printInvoiceFromDetail()" style="display: none;">🖨️ In Hóa Đơn</button>
+                <button class="btn btn-primary" id="export-pdf-btn" onclick="exportPDFFromDetail()" style="display: none;">📄 Xuất PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Return Product Modal -->
+    <div id="return-product-modal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3>Trả Hàng</h3>
+                <button class="close-btn" onclick="closeReturnProductModal()">×</button>
+            </div>
+            <div id="return-product-body"></div>
+        </div>
+    </div>
+
+    <!-- Exchange Product Modal -->
+    <div id="exchange-product-modal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3>Đổi Hàng</h3>
+                <button class="close-btn" onclick="closeExchangeProductModal()">×</button>
+            </div>
+            <div id="exchange-product-body"></div>
         </div>
     </div>
 
@@ -1149,6 +1205,7 @@
                 case 'orders': renderOrders(); break;
                 case 'customers': renderCustomers(); break;
                 case 'statistics': renderStatistics(); break;
+                case 'phieunhap': renderPhieuNhap(); break;
             }
         }
 
@@ -1589,7 +1646,7 @@
                             <select id="discount-code" onchange="applyDiscount()">
                                 <option value="">-- Không áp dụng --</option>
                                 ${discountList.map(d => `
-                                    <option value="${d.code}">
+                                    <option value="${d.maKM || d.code || ''}">
                                         ${d.maKM || d.code} - Giảm ${d.phantramGiam || d.phantramgiam}% ${d.tenKM || d.mota ? '(' + (d.tenKM || d.mota) + ')' : ''}
                                     </option>
                                 `).join('')}
@@ -1656,11 +1713,14 @@
                 return;
             }
 
-            const discount = discountList.find(d => d.code === code);
+            // Tìm discount theo maKM (schema mới) hoặc code (schema cũ)
+            const discount = discountList.find(d => (d.maKM || d.code) === code);
             if (discount) {
                 appliedDiscount = discount;
                 renderCart();
                 showToast(`Áp dụng khuyến mãi ${discount.phantramGiam || discount.phantramgiam}%`, 'success');
+            } else {
+                showToast('Không tìm thấy mã giảm giá', 'error');
             }
         }
 
@@ -1807,6 +1867,8 @@
                 
                 const usePoints = document.getElementById('use-points-checkbox')?.checked || false;
                 const customerPoints = selectedCustomer ? (selectedCustomer.diemtichluy || 0) : 0;
+                
+                // Tính điểm có thể dùng: dùng hết điểm nếu có
                 const pointsValue = usePoints ? Math.min(customerPoints * 1000, subtotal - discountAmount) : 0;
                 const pointsUsed = usePoints ? Math.floor(pointsValue / 1000) : 0;
                 
@@ -1817,11 +1879,16 @@
 
                 // Create invoice (server tự động sinh maHD)
                 // Schema mới sử dụng id thay vì mã cho foreign keys
+                // Gửi diemDaDung để server trừ điểm TRƯỚC khi tạo hóa đơn
+                console.log('Creating invoice with discount:', appliedDiscount);
+                console.log('Points to use:', pointsUsed);
                 const invoiceData = {
                     idNV: selectedNV.id, // Dùng id
                     idKH: selectedCustomer ? (selectedCustomer.id || null) : null, // Dùng id
-                    idKM: appliedDiscount ? (appliedDiscount.id || null) : null // Dùng id
+                    idKM: appliedDiscount ? (appliedDiscount.id || null) : null, // Dùng id
+                    diemDaDung: pointsUsed // Gửi điểm đã dùng để server trừ và lưu
                 };
+                console.log('Invoice data:', invoiceData);
 
                 const invoiceRes = await fetch(`${API_BASE}/hoadon`, {
                     method: 'POST',
@@ -1870,10 +1937,32 @@
                         return;
                     }
                 }
+                
+                // Recalculate invoice total với mã giảm giá và điểm (nếu có)
+                // Server đã trừ điểm khi tạo hóa đơn, bây giờ cần cập nhật tổng tiền với điểm
+                // Gọi PUT để cập nhật lại tổng tiền sau khi đã có chi tiết
+                if (pointsUsed > 0 || appliedDiscount) {
+                    await fetch(`${API_BASE}/hoadon/${idHD}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            idNV: selectedNV.id,
+                            idKH: selectedCustomer ? (selectedCustomer.id || null) : null,
+                            idKM: appliedDiscount ? (appliedDiscount.id || null) : null,
+                            diemDaDung: pointsUsed
+                        })
+                    });
+                }
 
-                // Update customer points if applicable
-                if (selectedCustomer && selectedCustomer.id) {
-                    const newPoints = customerPoints - pointsUsed + pointsEarned;
+                // Cộng điểm mới cho khách hàng (điểm đã được trừ khi tạo hóa đơn)
+                if (selectedCustomer && selectedCustomer.id && pointsEarned > 0) {
+                    // Lấy điểm hiện tại (đã bị trừ)
+                    const currentCustomerRes = await fetch(`${API_BASE}/khachhang/${selectedCustomer.id}`);
+                    const currentCustomerData = await currentCustomerRes.json();
+                    const currentPoints = currentCustomerData.success ? (currentCustomerData.data.diemtichluy || 0) : 0;
+                    
+                    // Cộng điểm mới
+                    const newPoints = currentPoints + pointsEarned;
                     await fetch(`${API_BASE}/khachhang/${selectedCustomer.id}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -1885,9 +1974,6 @@
                             diachi: selectedCustomer.diachi
                         })
                     });
-
-                    // Also update phanloaikh if needed (tổng chi)
-                    // This depends on your backend implementation
                 }
 
                 // Success
@@ -1928,7 +2014,17 @@
                         ${selectedCustomer ? `<div style="margin-top: 10px; color: #666; font-size: 11px;">Điểm tích lũy: +${pointsEarned} điểm (100.000đ = 1 điểm, tối thiểu 1 điểm)</div>` : ''}
                     </div>
                 `;
-                document.getElementById('success-modal').classList.add('active');
+                
+                // Hiển thị popup thành công
+                const successModal = document.getElementById('success-modal');
+                if (successModal) {
+                    successModal.classList.add('active');
+                    successModal.style.display = 'flex';
+                    successModal.style.zIndex = '10000';
+                    console.log('Success modal should be visible now');
+                } else {
+                    console.error('Success modal not found!');
+                }
 
                 // Reset
                 cart = [];
@@ -1952,7 +2048,50 @@
             if (!lastInvoiceId) return;
 
             try {
-                const response = await fetch(`${API_BASE}/hoadon/${lastInvoiceId}/pdf`);
+                // Tìm hóa đơn để lấy id
+                const order = ordersList.find(o => o.maHD === lastInvoiceId);
+                if (!order) {
+                    // Nếu không tìm thấy trong ordersList, thử tìm trong API
+                    const ordersRes = await fetch(`${API_BASE}/hoadon`);
+                    const ordersData = await ordersRes.json();
+                    if (ordersData.success) {
+                        const foundOrder = ordersData.data.find(o => o.maHD === lastInvoiceId);
+                        if (foundOrder && foundOrder.id) {
+                            const response = await fetch(`${API_BASE}/hoadon/${foundOrder.id}/pdf`);
+                            if (!response.ok) {
+                                showToast('Lỗi xuất hóa đơn', 'error');
+                                return;
+                            }
+                            const blob = await response.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const printWindow = window.open(url, '_blank');
+                            if (!printWindow) {
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `HoaDon_${lastInvoiceId}.pdf`;
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                document.body.removeChild(a);
+                                showToast('Đã tải hóa đơn. Vui lòng mở file để in.', 'info');
+                            } else {
+                                printWindow.onload = function() {
+                                    setTimeout(() => {
+                                        printWindow.print();
+                                    }, 500);
+                                };
+                                showToast('Đang mở hóa đơn để in...', 'success');
+                            }
+                            closeSuccessModal();
+                            return;
+                        }
+                    }
+                    showToast('Không tìm thấy hóa đơn', 'error');
+                    return;
+                }
+                
+                const idHD = order.id;
+                const response = await fetch(`${API_BASE}/hoadon/${idHD}/pdf`);
                 if (!response.ok) {
                     showToast('Lỗi xuất hóa đơn', 'error');
                     return;
@@ -2031,30 +2170,44 @@
                 if (result.success) {
                     ordersList = result.data;
                     
-                    // Fetch chi tiết hóa đơn để tính giảm giá từ điểm tích lũy
+                    // Tính toán giảm giá từ mã và điểm tích lũy cho mỗi hóa đơn
+                    // API đã trả về subtotal, phantramGiam, nên không cần fetch chi tiết nữa
                     for (let order of ordersList) {
                         try {
-                            // Dùng id thay vì maHD
-                            const idHD = order.id || order.maHD;
-                            const detailRes = await fetch(`${API_BASE}/chitiethd/${idHD}`);
-                            const detailData = await detailRes.json();
+                            // Lấy subtotal từ API (đã được tính sẵn)
+                            const subtotal = parseFloat(order.subtotal) || parseFloat(order.tongTien) || 0;
                             
-                            if (detailData.success && detailData.data.length > 0) {
-                                // Tính tổng tiền gốc từ chi tiết
-                                const subtotal = detailData.data.reduce((sum, item) => sum + (parseFloat(item.thanhTien) || 0), 0);
-                                const discountFromCode = parseFloat(order.tiengiamgia) || 0;
-                                const finalTotal = parseFloat(order.tongTien) || 0;
-                                
-                                // Giảm giá từ điểm tích lũy = subtotal - discountFromCode - finalTotal
-                                order.pointsDiscount = Math.max(0, subtotal - discountFromCode - finalTotal);
-                                order.subtotal = subtotal;
-                            } else {
-                                order.pointsDiscount = 0;
-                                order.subtotal = parseFloat(order.tongTien) || 0;
+                            // Tính giảm giá từ mã khuyến mãi (nếu có)
+                            let phantramGiam = 0;
+                            if (order.idKM && order.phantramGiam) {
+                                phantramGiam = parseFloat(order.phantramGiam) || 0;
                             }
+                            const tienGiamGiaCode = phantramGiam > 0 ? (subtotal * phantramGiam / 100) : 0;
+                            
+                            // Tổng tiền cuối cùng (sau khi giảm mã khuyến mãi)
+                            const finalTotal = parseFloat(order.tongTien) || 0;
+                            
+                            // Giảm giá từ điểm tích lũy = subtotal - tienGiamGiaCode - finalTotal
+                            // Nếu finalTotal đã bao gồm cả giảm điểm, thì pointsDiscount sẽ > 0
+                            const pointsDiscount = Math.max(0, subtotal - tienGiamGiaCode - finalTotal);
+                            
+                            // Lưu vào order object để hiển thị
+                            order.subtotal = subtotal;
+                            order.tienGiamGiaCode = tienGiamGiaCode;
+                            order.pointsDiscount = pointsDiscount;
+                            order.phantramGiam = phantramGiam;
+                            
+                            // Lưu thông tin mã giảm giá để hiển thị
+                            if (order.idKM && order.maKM) {
+                                order.maGiamGia = order.maKM;
+                            }
+                            
+                            console.log(`Order ${order.maHD}: subtotal=${subtotal}, tienGiamGiaCode=${tienGiamGiaCode}, pointsDiscount=${pointsDiscount}, finalTotal=${finalTotal}`);
                         } catch (err) {
+                            console.error(`Error calculating discount for order ${order.maHD}:`, err);
                             order.pointsDiscount = 0;
-                            order.subtotal = parseFloat(order.tongtien) || 0;
+                            order.subtotal = parseFloat(order.tongTien) || 0;
+                            order.tienGiamGiaCode = 0;
                         }
                     }
                     
@@ -2093,22 +2246,27 @@
                             const nv = nhanvienList.find(n => n.maNV === o.maNV);
                             const kh = customers.find(c => c.maKH === o.maKH);
                             const pointsDiscount = o.pointsDiscount || 0;
+                            let tienGiamGiaCode = o.tienGiamGiaCode || 0;
+                            // Nếu chưa có tienGiamGiaCode, tính từ subtotal và phantramGiam
+                            if (!tienGiamGiaCode && o.idKM && o.phantramGiam && o.subtotal) {
+                                tienGiamGiaCode = o.subtotal * (o.phantramGiam / 100);
+                            }
                             const finalTotal = parseFloat(o.tongTien) || 0;
                             return `
-                                <tr>
+                                <tr style="cursor: pointer;" onclick="viewInvoiceDetail('${o.maHD}')">
                                     <td><strong>${o.maHD}</strong></td>
                                     <td>${formatDate(o.ngayLap)}</td>
-                                    <td>${kh ? kh.tenKH : (o.maKH || 'Khách lẻ')}</td>
-                                    <td>${nv ? nv.tenNV : o.maNV}</td>
+                                    <td>${kh ? kh.tenKH : (o.tenKhachHang || o.maKH || 'Khách lẻ')}</td>
+                                    <td>${nv ? nv.tenNV : (o.tenNhanVien || o.maNV)}</td>
                                     <td>${o.subtotal ? formatCurrency(o.subtotal) : formatCurrency(finalTotal)}</td>
-                                    <td>${o.tiengiamgia ? formatCurrency(o.tiengiamgia) : '-'}</td>
-                                    <td>${pointsDiscount > 0 ? `<span class="value-success">${formatCurrency(pointsDiscount)}</span>` : '-'}</td>
+                                    <td>${tienGiamGiaCode > 0 ? `<span class="value-danger">-${formatCurrency(tienGiamGiaCode)}</span>` : '-'}</td>
+                                    <td>${pointsDiscount > 0 ? `<span class="value-success">-${formatCurrency(pointsDiscount)}</span>` : '-'}</td>
                                     <td><strong class="value-success">${formatCurrency(finalTotal)}</strong></td>
-                                    <td>
-                                        <button class="btn btn-sm btn-secondary" onclick="exportPDF('${o.maHD}')">PDF</button>
-                                        <button class="btn btn-sm btn-success" onclick="exportExcel('${o.maHD}')">Excel</button>
-                                        <button class="btn btn-sm btn-warning" onclick="openTraHangModal('${o.maHD}')">Trả hàng</button>
-                                        <button class="btn btn-sm btn-primary" onclick="openDoiHangModal('${o.maHD}')">Đổi hàng</button>
+                                    <td onclick="event.stopPropagation();"> 
+                                        <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); event.preventDefault(); viewInvoiceDetail('${o.maHD}'); return false;" title="Xem chi tiết" style="margin-right: 5px; z-index: 10; position: relative;">📄 Xem</button>
+                                        <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); exportPDF('${o.maHD}')" title="Xuất PDF" style="margin-right: 5px;">📄 Pdf</button>
+                                        <button class="btn btn-sm btn-warning" onclick="event.stopPropagation(); openTraHangModal('${o.maHD}')" title="Trả hàng" style="margin-right: 5px;">↩️ Trả</button>
+                                        <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); openDoiHangModal('${o.maHD}')" title="Đổi hàng">🔄 Đổi</button>
                                     </td>
                                 </tr>
                             `;
@@ -2132,11 +2290,306 @@
             renderOrdersTable(filtered);
         }
 
+        let currentViewingInvoiceId = null;
+        let currentViewingInvoiceMaHD = null;
+
+        async function viewInvoiceDetail(maHD) {
+            try {
+                console.log('=== viewInvoiceDetail START ===');
+                console.log('maHD:', maHD);
+                console.log('ordersList length:', ordersList.length);
+                
+                // Tìm hóa đơn trong ordersList
+                let order = ordersList.find(o => o.maHD === maHD);
+                console.log('Found order in list:', order);
+                
+                // Nếu không tìm thấy trong ordersList, thử load lại từ API
+                if (!order || !order.id) {
+                    console.log('Order not found, fetching from API...');
+                    showToast('Đang tải thông tin hóa đơn...', 'info');
+                    const ordersRes = await fetch(`${API_BASE}/hoadon`);
+                    const ordersData = await ordersRes.json();
+                    if (ordersData.success) {
+                        order = ordersData.data.find(o => o.maHD === maHD);
+                        console.log('Found order from API:', order);
+                    }
+                }
+                
+                if (!order || !order.id) {
+                    console.error('Order not found!');
+                    alert('Không tìm thấy hóa đơn với mã: ' + maHD);
+                    showToast('Không tìm thấy hóa đơn với mã: ' + maHD, 'error');
+                    return;
+                }
+                
+                console.log('Using order:', order);
+                currentViewingInvoiceId = order.id;
+                currentViewingInvoiceMaHD = maHD;
+                
+                await loadInvoiceDetail(order.id);
+                console.log('=== viewInvoiceDetail END ===');
+            } catch (error) {
+                console.error('Error in viewInvoiceDetail:', error);
+                alert('Lỗi: ' + error.message);
+                showToast('Lỗi: ' + error.message, 'error');
+            }
+        }
+        
+        async function loadInvoiceDetail(idHD) {
+            try {
+                console.log('Loading invoice detail for idHD:', idHD);
+                const response = await fetch(`${API_BASE}/hoadon/${idHD}/export?format=json`);
+                const result = await response.json();
+                
+                console.log('API response:', result);
+                
+                if (!result.success) {
+                    showToast('Lỗi tải chi tiết hóa đơn: ' + (result.message || 'Unknown error'), 'error');
+                    return;
+                }
+                
+                const invoice = result.data.thongTinHoaDon;
+                const details = result.data.chiTietHangHoa;
+                
+                console.log('Invoice data:', invoice);
+                console.log('Details:', details);
+                
+                const body = document.getElementById('invoice-detail-body');
+                if (!body) {
+                    console.error('invoice-detail-body element not found!');
+                    showToast('Lỗi: Không tìm thấy phần tử hiển thị', 'error');
+                    return;
+                }
+                
+                body.innerHTML = `
+                    <div style="padding: 0;">
+                        <!-- Header Info Card -->
+                        <div style="background: linear-gradient(135deg, #fdf4d7 0%, #d4e7e6 35%, #f1bdb5 70%, #d8d3e9 100%); padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                                <div style="background: white; padding: 15px; border-radius: 8px;">
+                                    <h4 style="margin: 0 0 12px 0; color: #1a2b48; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Thông Tin Hóa Đơn</h4>
+                                    <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                                        <span style="font-weight: 600; color: #4a5568; min-width: 100px;">Mã HĐ:</span>
+                                        <span style="color: #1a2b48; font-size: 16px; font-weight: 700;">${invoice.maHD}</span>
+                                    </div>
+                                    <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                                        <span style="font-weight: 600; color: #4a5568; min-width: 100px;">Ngày lập:</span>
+                                        <span style="color: #1a2b48;">${formatDate(invoice.ngaylap)}</span>
+                                    </div>
+                                    <div style="display: flex; align-items: center;">
+                                        <span style="font-weight: 600; color: #4a5568; min-width: 100px;">Nhân viên:</span>
+                                        <span style="color: #1a2b48;">${invoice.nhanVien.tenNV} <span style="color: #666; font-size: 12px;">(${invoice.nhanVien.maNV})</span></span>
+                                    </div>
+                                </div>
+                                <div style="background: white; padding: 15px; border-radius: 8px;">
+                                    <h4 style="margin: 0 0 12px 0; color: #1a2b48; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Thông Tin Khách Hàng</h4>
+                                    ${invoice.khachHang ? `
+                                        <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                                            <span style="font-weight: 600; color: #4a5568; min-width: 100px;">Tên KH:</span>
+                                            <span style="color: #1a2b48;">${invoice.khachHang.tenKH}</span>
+                                        </div>
+                                        <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                                            <span style="font-weight: 600; color: #4a5568; min-width: 100px;">Mã KH:</span>
+                                            <span style="color: #1a2b48; font-weight: 600;">${invoice.khachHang.maKH}</span>
+                                        </div>
+                                        <div style="display: flex; align-items: center;">
+                                            <span style="font-weight: 600; color: #4a5568; min-width: 100px;">SĐT:</span>
+                                            <span style="color: #1a2b48;">${invoice.khachHang.sdt || '-'}</span>
+                                        </div>
+                                    ` : '<p style="color: #666; margin: 0;">Khách lẻ</p>'}
+                                    ${invoice.maGiamGia ? `
+                                        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0;">
+                                            <div style="display: flex; align-items: center;">
+                                                <span style="font-weight: 600; color: #4a5568; min-width: 100px;">Mã KM:</span>
+                                                <span style="color: #00b894; font-weight: 600;">${invoice.maGiamGia.maKM} <span style="color: #666; font-size: 12px;">(-${invoice.maGiamGia.phantramgiam}%)</span></span>
+                                            </div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Products Table -->
+                        <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px;">
+                            <div style="background: linear-gradient(135deg, #d4e7e6 0%, #4a90e2 100%); padding: 15px 20px;">
+                                <h4 style="margin: 0; color: #1a2b48; font-size: 16px; font-weight: 700;">📦 Chi Tiết Sản Phẩm</h4>
+                            </div>
+                            <div style="overflow-x: auto;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="background: #f8f9fa;">
+                                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #e0e0e0; font-weight: 600; color: #1a2b48; font-size: 12px; text-transform: uppercase;">STT</th>
+                                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e0e0e0; font-weight: 600; color: #1a2b48; font-size: 12px; text-transform: uppercase;">Mã Hàng</th>
+                                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid #e0e0e0; font-weight: 600; color: #1a2b48; font-size: 12px; text-transform: uppercase;">Tên Hàng</th>
+                                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #e0e0e0; font-weight: 600; color: #1a2b48; font-size: 12px; text-transform: uppercase;">Số Lượng</th>
+                                            <th style="padding: 12px; text-align: right; border-bottom: 2px solid #e0e0e0; font-weight: 600; color: #1a2b48; font-size: 12px; text-transform: uppercase;">Đơn Giá</th>
+                                            <th style="padding: 12px; text-align: right; border-bottom: 2px solid #e0e0e0; font-weight: 600; color: #1a2b48; font-size: 12px; text-transform: uppercase;">Thành Tiền</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${details.map((item, index) => `
+                                            <tr style="border-bottom: 1px solid #f0f0f0; transition: background 0.2s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
+                                                <td style="padding: 12px; text-align: center; color: #666;">${item.stt}</td>
+                                                <td style="padding: 12px; color: #1a2b48; font-weight: 600;">${item.maHang}</td>
+                                                <td style="padding: 12px; color: #1a2b48;">${item.tenHang}</td>
+                                                <td style="padding: 12px; text-align: center; color: #1a2b48;">
+                                                    <span style="background: #e6f7ff; padding: 4px 10px; border-radius: 12px; font-weight: 600; font-size: 13px;">${item.soluong}</span>
+                                                </td>
+                                                <td style="padding: 12px; text-align: right; color: #1a2b48;">${formatCurrency(item.dongia)}</td>
+                                                <td style="padding: 12px; text-align: right; color: #00b894; font-weight: 700; font-size: 14px;">${formatCurrency(item.tongtien)}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- Summary Card -->
+                        <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+                            <h4 style="margin: 0 0 15px 0; color: #1a2b48; font-size: 16px; font-weight: 700;">💰 Tổng Kết Thanh Toán</h4>
+                            <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                    <span style="color: #666; font-size: 14px;">Tổng tiền hàng:</span>
+                                    <span style="color: #1a2b48; font-weight: 600; font-size: 15px;">${formatCurrency(invoice.tongTien)}</span>
+                                </div>
+                                ${invoice.tienGiamGiaCode > 0 ? `
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 8px; background: #fff3e0; border-radius: 6px;">
+                                        <span style="color: #dc2626; font-size: 14px; font-weight: 600;">💳 Giảm giá (Mã):</span>
+                                        <span style="color: #dc2626; font-weight: 700; font-size: 15px;">-${formatCurrency(invoice.tienGiamGiaCode)}</span>
+                                    </div>
+                                ` : ''}
+                                ${invoice.tienGiamGiaDiem > 0 ? `
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 8px; background: #e6fff5; border-radius: 6px;">
+                                        <span style="color: #059669; font-size: 14px; font-weight: 600;">⭐ Giảm giá (Điểm):</span>
+                                        <span style="color: #059669; font-weight: 700; font-size: 15px;">-${formatCurrency(invoice.tienGiamGiaDiem)}</span>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div style="background: linear-gradient(135deg, #00b894 0%, #00cec9 100%); padding: 18px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 15px rgba(0, 184, 148, 0.3);">
+                                <span style="color: white; font-size: 18px; font-weight: 700;">Thành tiền:</span>
+                                <span style="color: white; font-size: 24px; font-weight: 900;">${formatCurrency(invoice.thanhTien)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Hiển thị các nút action
+                const printBtn = document.getElementById('print-invoice-btn');
+                const exportBtn = document.getElementById('export-pdf-btn');
+                if (printBtn) printBtn.style.display = 'inline-flex';
+                if (exportBtn) exportBtn.style.display = 'inline-flex';
+                
+                // Hiển thị modal
+                const modal = document.getElementById('invoice-detail-modal');
+                if (!modal) {
+                    console.error('Modal element not found!');
+                    showToast('Không tìm thấy modal', 'error');
+                    return;
+                }
+                
+                console.log('Modal element found, showing...');
+                
+                // Đơn giản: chỉ cần thêm class 'active' và 'show' theo CSS đã có
+                modal.classList.add('active');
+                modal.classList.add('show');
+                
+                // Đảm bảo modal hiển thị bằng inline style
+                modal.style.display = 'flex';
+                modal.style.zIndex = '10000';
+                
+                console.log('Modal classes:', modal.className);
+                console.log('Modal display style:', modal.style.display);
+                
+                // Verify sau 100ms
+                setTimeout(() => {
+                    const computed = window.getComputedStyle(modal);
+                    console.log('Computed display:', computed.display);
+                    if (computed.display !== 'flex') {
+                        console.warn('Modal still hidden, forcing display...');
+                        modal.style.display = 'flex';
+                        modal.style.setProperty('display', 'flex', 'important');
+                    }
+                }, 100);
+            } catch (error) {
+                console.error('Error in loadInvoiceDetail:', error);
+                showToast('Lỗi: ' + error.message, 'error');
+            }
+        }
+        
+        async function printInvoiceFromDetail() {
+            if (!currentViewingInvoiceId || !currentViewingInvoiceMaHD) return;
+            await printInvoiceFromId(currentViewingInvoiceId, currentViewingInvoiceMaHD);
+        }
+        
+        async function exportPDFFromDetail() {
+            if (!currentViewingInvoiceId || !currentViewingInvoiceMaHD) return;
+            await exportPDF(currentViewingInvoiceMaHD);
+        }
+        
+        async function printInvoiceFromId(idHD, maHD) {
+            try {
+                const response = await fetch(`${API_BASE}/hoadon/${idHD}/pdf`);
+                if (!response.ok) {
+                    showToast('Lỗi xuất hóa đơn', 'error');
+                    return;
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const printWindow = window.open(url, '_blank');
+                
+                if (!printWindow) {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `HoaDon_${maHD}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    showToast('Đã tải hóa đơn. Vui lòng mở file để in.', 'info');
+                } else {
+                    printWindow.onload = function() {
+                        setTimeout(() => {
+                            printWindow.print();
+                        }, 500);
+                    };
+                    showToast('Đang mở hóa đơn để in...', 'success');
+                }
+            } catch (error) {
+                showToast('Lỗi: ' + error.message, 'error');
+            }
+        }
+
+        function closeInvoiceDetailModal() {
+            const modal = document.getElementById('invoice-detail-modal');
+            if (modal) {
+                modal.classList.remove('active');
+                modal.classList.remove('show');
+                modal.setAttribute('style', 'display: none !important;');
+            }
+        }
+        
+        // Đảm bảo modal có thể đóng khi click bên ngoài
+        window.addEventListener('load', function() {
+            const modal = document.getElementById('invoice-detail-modal');
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) {
+                        closeInvoiceDetailModal();
+                    }
+                });
+            }
+        });
+
         async function exportPDF(maHD) {
             try {
                 // Tìm hóa đơn để lấy id
                 const order = ordersList.find(o => o.maHD === maHD);
-                const idHD = order ? (order.id || maHD) : maHD;
+                if (!order || !order.id) {
+                    showToast('Không tìm thấy hóa đơn', 'error');
+                    return;
+                }
+                const idHD = order.id;
                 const response = await fetch(`${API_BASE}/hoadon/${idHD}/pdf`);
                 if (!response.ok) {
                     showToast('Lỗi xuất PDF', 'error');
@@ -2163,7 +2616,11 @@
             try {
                 // Tìm hóa đơn để lấy id
                 const order = ordersList.find(o => o.maHD === maHD);
-                const idHD = order ? (order.id || maHD) : maHD;
+                if (!order || !order.id) {
+                    showToast('Không tìm thấy hóa đơn', 'error');
+                    return;
+                }
+                const idHD = order.id;
                 const response = await fetch(`${API_BASE}/hoadon/${idHD}/export?format=excel`);
                 if (!response.ok) {
                     showToast('Lỗi xuất Excel', 'error');
@@ -2275,23 +2732,27 @@
         // ==================== STATISTICS ====================
         async function renderStatistics() {
             const content = document.getElementById('page-content');
+            const today = new Date();
+            const currentYear = today.getFullYear();
+            const currentMonth = today.getMonth() + 1;
+            const currentQuarter = Math.floor((currentMonth - 1) / 3) + 1;
+            
             content.innerHTML = `
                 <div class="page-header">
                     <div>
                         <h2>Thống Kê Doanh Thu</h2>
-                        <p>Thống kê doanh thu theo nhân viên</p>
+                        <p>Thống kê doanh thu theo nhiều tiêu chí</p>
                     </div>
                 </div>
                 <div class="search-box">
-                    <select id="stat-month" class="search-input" style="max-width: 150px;">
-                        ${Array.from({length: 12}, (_, i) => `<option value="${i+1}" ${new Date().getMonth() === i ? 'selected' : ''}>Tháng ${i+1}</option>`).join('')}
+                    <select id="stat-period" class="search-input" style="max-width: 150px;" onchange="changeStatPeriod()">
+                        <option value="day">Theo Ngày</option>
+                        <option value="week">Theo Tuần</option>
+                        <option value="month" selected>Theo Tháng</option>
+                        <option value="quarter">Theo Quý</option>
+                        <option value="year">Theo Năm</option>
                     </select>
-                    <select id="stat-year" class="search-input" style="max-width: 120px;">
-                        ${Array.from({length: 5}, (_, i) => {
-                            const year = new Date().getFullYear() - i;
-                            return `<option value="${year}" ${i === 0 ? 'selected' : ''}>${year}</option>`;
-                        }).join('')}
-                    </select>
+                    <div id="stat-date-filters"></div>
                     <button class="btn btn-primary" onclick="loadStatistics()">Xem Thống Kê</button>
                 </div>
                 <div class="stats-row" id="stat-summary"></div>
@@ -2299,111 +2760,485 @@
                     <div class="loading"><div class="spinner"></div><p>Đang tải...</p></div>
                 </div>
             `;
-
+            
+            changeStatPeriod();
             await loadStatistics();
+        }
+        
+        function changeStatPeriod() {
+            const period = document.getElementById('stat-period').value;
+            const filtersDiv = document.getElementById('stat-date-filters');
+            const today = new Date();
+            
+            if (period === 'day') {
+                const startDate = new Date(today);
+                startDate.setDate(startDate.getDate() - 30);
+                filtersDiv.innerHTML = `
+                    <input type="date" id="stat-start-date" class="search-input" style="max-width: 150px;" 
+                           value="${startDate.toISOString().split('T')[0]}">
+                    <input type="date" id="stat-end-date" class="search-input" style="max-width: 150px;" 
+                           value="${today.toISOString().split('T')[0]}">
+                `;
+            } else if (period === 'month') {
+                filtersDiv.innerHTML = `
+                    <select id="stat-month" class="search-input" style="max-width: 150px;">
+                        ${Array.from({length: 12}, (_, i) => `<option value="${i+1}" ${today.getMonth() === i ? 'selected' : ''}>Tháng ${i+1}</option>`).join('')}
+                    </select>
+                    <select id="stat-year" class="search-input" style="max-width: 120px;">
+                        ${Array.from({length: 5}, (_, i) => {
+                            const year = today.getFullYear() - i;
+                            return `<option value="${year}" ${i === 0 ? 'selected' : ''}>${year}</option>`;
+                        }).join('')}
+                    </select>
+                `;
+            } else if (period === 'quarter') {
+                filtersDiv.innerHTML = `
+                    <select id="stat-quarter" class="search-input" style="max-width: 120px;">
+                        <option value="1" ${Math.floor((today.getMonth()) / 3) === 0 ? 'selected' : ''}>Quý 1</option>
+                        <option value="2" ${Math.floor((today.getMonth()) / 3) === 1 ? 'selected' : ''}>Quý 2</option>
+                        <option value="3" ${Math.floor((today.getMonth()) / 3) === 2 ? 'selected' : ''}>Quý 3</option>
+                        <option value="4" ${Math.floor((today.getMonth()) / 3) === 3 ? 'selected' : ''}>Quý 4</option>
+                    </select>
+                    <select id="stat-year" class="search-input" style="max-width: 120px;">
+                        ${Array.from({length: 5}, (_, i) => {
+                            const year = today.getFullYear() - i;
+                            return `<option value="${year}" ${i === 0 ? 'selected' : ''}>${year}</option>`;
+                        }).join('')}
+                    </select>
+                `;
+            } else if (period === 'year') {
+                filtersDiv.innerHTML = `
+                    <select id="stat-year" class="search-input" style="max-width: 120px;">
+                        ${Array.from({length: 5}, (_, i) => {
+                            const year = today.getFullYear() - i;
+                            return `<option value="${year}" ${i === 0 ? 'selected' : ''}>${year}</option>`;
+                        }).join('')}
+                    </select>
+                `;
+            } else {
+                filtersDiv.innerHTML = '';
+            }
         }
 
         async function loadStatistics() {
             try {
-                const month = document.getElementById('stat-month').value;
-                const year = document.getElementById('stat-year').value;
-
-                const response = await fetch(`${API_BASE}/hoadon`);
+                const period = document.getElementById('stat-period').value;
+                let url = `${API_BASE}/thongke/doanhthu?period=${period}`;
+                
+                if (period === 'day') {
+                    const startDate = document.getElementById('stat-start-date').value;
+                    const endDate = document.getElementById('stat-end-date').value;
+                    url += `&startDate=${startDate}&endDate=${endDate}`;
+                } else if (period === 'month') {
+                    const month = document.getElementById('stat-month').value;
+                    const year = document.getElementById('stat-year').value;
+                    // Tính startDate và endDate cho tháng
+                    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+                    const lastDay = new Date(year, month, 0).getDate();
+                    const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+                    url += `&startDate=${startDate}&endDate=${endDate}`;
+                } else if (period === 'quarter') {
+                    const quarter = document.getElementById('stat-quarter').value;
+                    const year = document.getElementById('stat-year').value;
+                    const startMonth = (parseInt(quarter) - 1) * 3 + 1;
+                    const endMonth = parseInt(quarter) * 3;
+                    const startDate = `${year}-${String(startMonth).padStart(2, '0')}-01`;
+                    const lastDay = new Date(year, endMonth, 0).getDate();
+                    const endDate = `${year}-${String(endMonth).padStart(2, '0')}-${lastDay}`;
+                    url += `&startDate=${startDate}&endDate=${endDate}`;
+                } else if (period === 'year') {
+                    const year = document.getElementById('stat-year').value;
+                    const startDate = `${year}-01-01`;
+                    const endDate = `${year}-12-31`;
+                    url += `&startDate=${startDate}&endDate=${endDate}`;
+                }
+                
+                const response = await fetch(url);
                 const result = await response.json();
 
                 if (result.success) {
-                    const orders = result.data.filter(o => {
-                        if (!o.ngayLap) return false;
-                        const date = new Date(o.ngayLap);
-                        return date.getMonth() + 1 === parseInt(month) && date.getFullYear() === parseInt(year);
-                    });
-
-                    // Group by employee
-                    const employeeStats = {};
-                    orders.forEach(o => {
-                        if (!employeeStats[o.maNV]) {
-                            const nv = nhanvienList.find(n => n.maNV === o.maNV);
-                            employeeStats[o.maNV] = {
-                                maNV: o.maNV,
-                                tenNV: nv ? nv.tenNV : o.maNV,
-                                totalOrders: 0,
-                                totalRevenue: 0
-                            };
-                        }
-                        employeeStats[o.maNV].totalOrders++;
-                        employeeStats[o.maNV].totalRevenue += parseFloat(o.tongTien) || 0;
-                    });
-
-                    const statsList = Object.values(employeeStats).sort((a, b) => b.totalRevenue - a.totalRevenue);
+                    const stats = result.data;
                     
-                    // Summary
-                    const totalRevenue = orders.reduce((sum, o) => sum + (parseFloat(o.tongTien) || 0), 0);
-                    const totalOrders = orders.length;
-                    const topEmployee = statsList[0];
-
+                    // Tính tổng
+                    const totalRevenue = stats.reduce((sum, s) => sum + (parseFloat(s.tongDoanhThu) || 0), 0);
+                    const totalOrders = stats.reduce((sum, s) => sum + (parseInt(s.soHoaDon) || 0), 0);
+                    
+                    // Hiển thị summary
                     document.getElementById('stat-summary').innerHTML = `
                         <div class="stat-card green">
                             <h3>${formatCurrency(totalRevenue)}</h3>
-                            <p>Tổng doanh thu tháng ${month}/${year}</p>
+                            <p>Tổng doanh thu</p>
                         </div>
                         <div class="stat-card blue">
                             <h3>${totalOrders}</h3>
                             <p>Tổng số hóa đơn</p>
                         </div>
                         <div class="stat-card purple">
-                            <h3>${topEmployee ? topEmployee.tenNV : '-'}</h3>
-                            <p>Nhân viên doanh thu cao nhất</p>
+                            <h3>${stats.length}</h3>
+                            <p>Số ${period === 'day' ? 'ngày' : period === 'week' ? 'tuần' : period === 'month' ? 'tháng' : period === 'quarter' ? 'quý' : 'năm'}</p>
                         </div>
                         <div class="stat-card orange">
-                            <h3>${topEmployee ? formatCurrency(topEmployee.totalRevenue) : '-'}</h3>
-                            <p>Doanh thu cao nhất</p>
+                            <h3>${totalOrders > 0 ? formatCurrency(totalRevenue / totalOrders) : '0đ'}</h3>
+                            <p>Trung bình mỗi hóa đơn</p>
                         </div>
                     `;
-
-                    renderStatisticsTable(statsList, month, year);
+                    
+                    renderStatisticsTable(stats, period);
+                } else {
+                    showToast('Lỗi tải thống kê', 'error');
                 }
             } catch (error) {
-                showToast('Lỗi tải thống kê', 'error');
+                showToast('Lỗi tải thống kê: ' + error.message, 'error');
             }
         }
-
-        function renderStatisticsTable(data, month, year) {
+        
+        function renderStatisticsTable(data, period) {
             const container = document.getElementById('stat-container');
 
             if (!data.length) {
-                container.innerHTML = `<div class="empty-state">Không có dữ liệu cho tháng ${month}/${year}</div>`;
+                container.innerHTML = `<div class="empty-state">Không có dữ liệu</div>`;
                 return;
+            }
+
+            let headers = '';
+            let rows = '';
+            
+            if (period === 'day') {
+                headers = '<th>Ngày</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
+                rows = data.map(s => `
+                    <tr>
+                        <td><strong>${formatDate(s.ngay)}</strong></td>
+                        <td>${s.soHoaDon}</td>
+                        <td><strong class="value-success">${formatCurrency(s.tongDoanhThu)}</strong></td>
+                    </tr>
+                `).join('');
+            } else if (period === 'week') {
+                headers = '<th>Năm</th><th>Tuần</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
+                rows = data.map(s => `
+                    <tr>
+                        <td><strong>${s.nam}</strong></td>
+                        <td>Tuần ${s.tuan}</td>
+                        <td>${s.soHoaDon}</td>
+                        <td><strong class="value-success">${formatCurrency(s.tongDoanhThu)}</strong></td>
+                    </tr>
+                `).join('');
+            } else if (period === 'month') {
+                headers = '<th>Năm</th><th>Tháng</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
+                rows = data.map(s => `
+                    <tr>
+                        <td><strong>${s.nam}</strong></td>
+                        <td>Tháng ${s.thang}</td>
+                        <td>${s.soHoaDon}</td>
+                        <td><strong class="value-success">${formatCurrency(s.tongDoanhThu)}</strong></td>
+                    </tr>
+                `).join('');
+            } else if (period === 'quarter') {
+                headers = '<th>Năm</th><th>Quý</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
+                rows = data.map(s => `
+                    <tr>
+                        <td><strong>${s.nam}</strong></td>
+                        <td>Quý ${s.quy}</td>
+                        <td>${s.soHoaDon}</td>
+                        <td><strong class="value-success">${formatCurrency(s.tongDoanhThu)}</strong></td>
+                    </tr>
+                `).join('');
+            } else if (period === 'year') {
+                headers = '<th>Năm</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
+                rows = data.map(s => `
+                    <tr>
+                        <td><strong>${s.nam}</strong></td>
+                        <td>${s.soHoaDon}</td>
+                        <td><strong class="value-success">${formatCurrency(s.tongDoanhThu)}</strong></td>
+                    </tr>
+                `).join('');
             }
 
             container.innerHTML = `
                 <table>
                     <thead>
                         <tr>
-                            <th>Hạng</th>
-                            <th>Mã NV</th>
-                            <th>Tên Nhân Viên</th>
-                            <th>Số Hóa Đơn</th>
-                            <th>Tổng Doanh Thu</th>
+                            ${headers}
                         </tr>
                     </thead>
                     <tbody>
-                        ${data.map((s, index) => `
-                            <tr style="${index === 0 ? 'background: #fff3e0;' : ''}">
-                                <td>
-                                    ${index === 0 ? '<span style="color: #f39c12; font-weight: bold;">🥇 1</span>' : 
-                                      index === 1 ? '<span style="color: #95a5a6; font-weight: bold;">🥈 2</span>' : 
-                                      index === 2 ? '<span style="color: #cd6133; font-weight: bold;">🥉 3</span>' : 
-                                      index + 1}
-                                </td>
-                                <td><strong>${s.maNV}</strong></td>
-                                <td>${s.tenNV}</td>
-                                <td>${s.totalOrders}</td>
-                                <td><strong class="value-success">${formatCurrency(s.totalRevenue)}</strong></td>
-                            </tr>
-                        `).join('')}
+                        ${rows}
                     </tbody>
                 </table>
             `;
+        }
+
+        // ==================== PHIẾU NHẬP ====================
+        async function renderPhieuNhap() {
+            const content = document.getElementById('page-content');
+            content.innerHTML = `
+                <div class="page-header">
+                    <div>
+                        <h2>Quản Lý Phiếu Nhập Hàng</h2>
+                        <p>Quản lý các phiếu nhập hàng vào kho</p>
+                    </div>
+                    <button class="btn btn-success" onclick="openNewPhieuNhapModal()">➕ Tạo Phiếu Nhập Mới</button>
+                </div>
+                <div class="search-box">
+                    <input type="text" class="search-input" id="search-phieunhap" placeholder="Tìm theo mã phiếu, nhân viên..." oninput="filterPhieuNhap()">
+                    <button class="btn btn-primary" onclick="filterPhieuNhap()">Tìm kiếm</button>
+                    <button class="btn btn-secondary" onclick="loadPhieuNhap()">Tải lại</button>
+                </div>
+                <div id="phieunhap-container" class="table-container">
+                    <div class="loading"><div class="spinner"></div><p>Đang tải...</p></div>
+                </div>
+            `;
+
+            await loadPhieuNhap();
+        }
+
+        async function loadPhieuNhap() {
+            try {
+                // Tạm thời hiển thị thông báo vì chưa có API
+                const container = document.getElementById('phieunhap-container');
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <p>Chức năng quản lý phiếu nhập hàng đang được phát triển.</p>
+                        <p style="font-size: 12px; color: #999; margin-top: 10px;">Vui lòng liên hệ admin để thêm phiếu nhập.</p>
+                    </div>
+                `;
+            } catch (error) {
+                showToast('Lỗi tải dữ liệu', 'error');
+            }
+        }
+
+        function filterPhieuNhap() {
+            // Tạm thời
+        }
+
+        function openNewPhieuNhapModal() {
+            showToast('Chức năng đang được phát triển', 'info');
+        }
+
+        // ==================== TRẢ HÀNG ====================
+        async function openTraHangModal(maHD) {
+            try {
+                const order = ordersList.find(o => o.maHD === maHD);
+                if (!order || !order.id) {
+                    showToast('Không tìm thấy hóa đơn', 'error');
+                    return;
+                }
+                
+                const idHD = order.id;
+                const response = await fetch(`${API_BASE}/chitiethd/${idHD}`);
+                const result = await response.json();
+                
+                if (!result.success || !result.data.length) {
+                    showToast('Không có chi tiết hóa đơn', 'error');
+                    return;
+                }
+                
+                const details = result.data;
+                const body = document.getElementById('return-product-body');
+                body.innerHTML = `
+                    <div style="padding: 20px;">
+                        <p style="margin-bottom: 15px;"><strong>Hóa đơn:</strong> ${maHD}</p>
+                        <div id="return-items-list" style="max-height: 400px; overflow-y: auto; margin-bottom: 20px;">
+                            ${details.map(item => `
+                                <div style="padding: 15px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <strong>${item.tenHang || item.maHang}</strong>
+                                            <p style="font-size: 12px; color: #666; margin: 5px 0;">Mã: ${item.maHang}</p>
+                                            <p style="font-size: 12px; color: #666;">Đã bán: ${item.soluong} sản phẩm</p>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <label style="font-size: 12px;">Số lượng trả:</label>
+                                            <input type="number" id="return-qty-${item.idHang}" 
+                                                   min="1" max="${item.soluong}" value="1" 
+                                                   style="width: 80px; padding: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-outline" onclick="closeReturnProductModal()">Hủy</button>
+                            <button type="button" class="btn btn-warning" onclick="submitReturnProduct('${maHD}')">Xác nhận trả hàng</button>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('return-product-modal').classList.add('active');
+            } catch (error) {
+                showToast('Lỗi: ' + error.message, 'error');
+            }
+        }
+
+        function closeReturnProductModal() {
+            document.getElementById('return-product-modal').classList.remove('active');
+        }
+
+        async function submitReturnProduct(maHD) {
+            try {
+                const order = ordersList.find(o => o.maHD === maHD);
+                if (!order || !order.id) {
+                    showToast('Không tìm thấy hóa đơn', 'error');
+                    return;
+                }
+                
+                const idHD = order.id;
+                const response = await fetch(`${API_BASE}/chitiethd/${idHD}`);
+                const result = await response.json();
+                
+                if (!result.success || !result.data.length) {
+                    showToast('Không có chi tiết hóa đơn', 'error');
+                    return;
+                }
+                
+                const details = result.data;
+                const items = [];
+                
+                for (const item of details) {
+                    const qtyInput = document.getElementById(`return-qty-${item.idHang}`);
+                    if (qtyInput && parseInt(qtyInput.value) > 0) {
+                        items.push({
+                            idHang: item.idHang,
+                            soluong: parseInt(qtyInput.value)
+                        });
+                    }
+                }
+                
+                if (items.length === 0) {
+                    showToast('Vui lòng chọn sản phẩm cần trả', 'error');
+                    return;
+                }
+                
+                const returnRes = await fetch(`${API_BASE}/hoadon/${idHD}/tra-hang`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items })
+                });
+                
+                const returnResult = await returnRes.json();
+                
+                if (returnResult.success) {
+                    showToast('Trả hàng thành công', 'success');
+                    closeReturnProductModal();
+                    await loadOrders();
+                } else {
+                    showToast(returnResult.message || 'Lỗi trả hàng', 'error');
+                }
+            } catch (error) {
+                showToast('Lỗi: ' + error.message, 'error');
+            }
+        }
+
+        // ==================== ĐỔI HÀNG ====================
+        async function openDoiHangModal(maHD) {
+            try {
+                const order = ordersList.find(o => o.maHD === maHD);
+                if (!order || !order.id) {
+                    showToast('Không tìm thấy hóa đơn', 'error');
+                    return;
+                }
+                
+                const idHD = order.id;
+                const response = await fetch(`${API_BASE}/chitiethd/${idHD}`);
+                const result = await response.json();
+                
+                if (!result.success || !result.data.length) {
+                    showToast('Không có chi tiết hóa đơn', 'error');
+                    return;
+                }
+                
+                const details = result.data;
+                const body = document.getElementById('exchange-product-body');
+                body.innerHTML = `
+                    <div style="padding: 20px;">
+                        <p style="margin-bottom: 15px;"><strong>Hóa đơn:</strong> ${maHD}</p>
+                        <div class="form-group">
+                            <label>Chọn sản phẩm cần đổi:</label>
+                            <select id="exchange-old-product" class="form-group" style="width: 100%; padding: 10px; border: 2px solid #e8e8e8; border-radius: 8px;" onchange="loadExchangeNewProduct()">
+                                <option value="">-- Chọn sản phẩm --</option>
+                                ${details.map(item => `
+                                    <option value="${item.idHang}" data-qty="${item.soluong}">${item.tenHang || item.maHang} (Đã bán: ${item.soluong})</option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Số lượng đổi:</label>
+                            <input type="number" id="exchange-qty" min="1" value="1" 
+                                   style="width: 100%; padding: 10px; border: 2px solid #e8e8e8; border-radius: 8px;">
+                        </div>
+                        <div class="form-group">
+                            <label>Chọn sản phẩm mới:</label>
+                            <select id="exchange-new-product" class="form-group" style="width: 100%; padding: 10px; border: 2px solid #e8e8e8; border-radius: 8px;">
+                                <option value="">-- Chọn sản phẩm mới --</option>
+                                ${products.filter(p => p.soluong > 0).map(p => `
+                                    <option value="${p.id}">${p.tenHang} (${p.maHang}) - Còn: ${p.soluong}</option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-outline" onclick="closeExchangeProductModal()">Hủy</button>
+                            <button type="button" class="btn btn-primary" onclick="submitExchangeProduct('${maHD}')">Xác nhận đổi hàng</button>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('exchange-product-modal').classList.add('active');
+            } catch (error) {
+                showToast('Lỗi: ' + error.message, 'error');
+            }
+        }
+
+        function loadExchangeNewProduct() {
+            const oldProductSelect = document.getElementById('exchange-old-product');
+            const qtyInput = document.getElementById('exchange-qty');
+            if (oldProductSelect && qtyInput) {
+                const selectedOption = oldProductSelect.options[oldProductSelect.selectedIndex];
+                const maxQty = selectedOption ? parseInt(selectedOption.dataset.qty) : 1;
+                qtyInput.max = maxQty;
+                qtyInput.value = Math.min(parseInt(qtyInput.value) || 1, maxQty);
+            }
+        }
+
+        function closeExchangeProductModal() {
+            document.getElementById('exchange-product-modal').classList.remove('active');
+        }
+
+        async function submitExchangeProduct(maHD) {
+            try {
+                const order = ordersList.find(o => o.maHD === maHD);
+                if (!order || !order.id) {
+                    showToast('Không tìm thấy hóa đơn', 'error');
+                    return;
+                }
+                
+                const idHD = order.id;
+                const idHangCu = document.getElementById('exchange-old-product').value;
+                const idHangMoi = document.getElementById('exchange-new-product').value;
+                const soluong = parseInt(document.getElementById('exchange-qty').value);
+                
+                if (!idHangCu || !idHangMoi || !soluong || soluong <= 0) {
+                    showToast('Vui lòng điền đầy đủ thông tin', 'error');
+                    return;
+                }
+                
+                const exchangeRes = await fetch(`${API_BASE}/hoadon/${idHD}/doi-hang`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idHangCu: parseInt(idHangCu), idHangMoi: parseInt(idHangMoi), soluong })
+                });
+                
+                const exchangeResult = await exchangeRes.json();
+                
+                if (exchangeResult.success) {
+                    showToast('Đổi hàng thành công', 'success');
+                    closeExchangeProductModal();
+                    await loadOrders();
+                    await loadProducts();
+                } else {
+                    showToast(exchangeResult.message || 'Lỗi đổi hàng', 'error');
+                }
+            } catch (error) {
+                showToast('Lỗi: ' + error.message, 'error');
+            }
         }
 
         // ==================== UTILITIES ====================
@@ -2474,3 +3309,4 @@
 </body>
 
 </html>
+
