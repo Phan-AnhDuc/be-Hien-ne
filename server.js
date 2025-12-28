@@ -2711,59 +2711,149 @@ app.get('/api/hoadon/:id/pdf', async (req, res) => {
 
 // ================== THỐNG KÊ DOANH THU API ==================
 app.get('/api/thongke/doanhthu', async (req, res) => {
-    const { period, startDate, endDate } = req.query; // period: 'day', 'week', 'month', 'quarter', 'year'
+    const { period, startDate, endDate, idNV } = req.query; // period: 'day', 'week', 'month', 'quarter', 'year'
     
     try {
         const pool = await poolPromise;
         let query = '';
+        const hasIdNV = idNV && idNV !== '';
         
         if (period === 'day' && startDate && endDate) {
             query = `SELECT 
-                        CAST(ngayLap AS DATE) as ngay,
+                        CAST(h.ngayLap AS DATE) as ngay,
+                        h.idNV,
+                        nv.maNV,
+                        nv.tenNV as tenNhanVien,
                         COUNT(*) as soHoaDon,
-                        SUM(tongTien) as tongDoanhThu
-                    FROM HOADON
-                    WHERE CAST(ngayLap AS DATE) BETWEEN @startDate AND @endDate
-                    GROUP BY CAST(ngayLap AS DATE)
-                    ORDER BY ngay DESC`;
+                        SUM(h.tongTien) as tongDoanhThu
+                    FROM HOADON h
+                    LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                    WHERE CAST(h.ngayLap AS DATE) BETWEEN @startDate AND @endDate
+                    ${hasIdNV ? 'AND h.idNV = @idNV' : ''}
+                    GROUP BY CAST(h.ngayLap AS DATE), h.idNV, nv.maNV, nv.tenNV
+                    ORDER BY tongDoanhThu DESC, ngay DESC`;
         } else if (period === 'week') {
-            query = `SELECT 
-                        DATEPART(YEAR, ngayLap) as nam,
-                        DATEPART(WEEK, ngayLap) as tuan,
-                        COUNT(*) as soHoaDon,
-                        SUM(tongTien) as tongDoanhThu
-                    FROM HOADON
-                    WHERE ngayLap >= DATEADD(WEEK, -12, GETDATE())
-                    GROUP BY DATEPART(YEAR, ngayLap), DATEPART(WEEK, ngayLap)
-                    ORDER BY nam DESC, tuan DESC`;
+            const whereClause = hasIdNV ? 'WHERE h.idNV = @idNV' : 'WHERE h.ngayLap >= DATEADD(WEEK, -12, GETDATE())';
+            if (hasIdNV && startDate && endDate) {
+                query = `SELECT 
+                            DATEPART(YEAR, h.ngayLap) as nam,
+                            DATEPART(WEEK, h.ngayLap) as tuan,
+                            h.idNV,
+                            nv.maNV,
+                            nv.tenNV as tenNhanVien,
+                            COUNT(*) as soHoaDon,
+                            SUM(h.tongTien) as tongDoanhThu
+                        FROM HOADON h
+                        LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                        WHERE CAST(h.ngayLap AS DATE) BETWEEN @startDate AND @endDate AND h.idNV = @idNV
+                        GROUP BY DATEPART(YEAR, h.ngayLap), DATEPART(WEEK, h.ngayLap), h.idNV, nv.maNV, nv.tenNV
+                        ORDER BY tongDoanhThu DESC, nam DESC, tuan DESC`;
+            } else {
+                query = `SELECT 
+                            DATEPART(YEAR, h.ngayLap) as nam,
+                            DATEPART(WEEK, h.ngayLap) as tuan,
+                            h.idNV,
+                            nv.maNV,
+                            nv.tenNV as tenNhanVien,
+                            COUNT(*) as soHoaDon,
+                            SUM(h.tongTien) as tongDoanhThu
+                        FROM HOADON h
+                        LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                        ${whereClause}
+                        GROUP BY DATEPART(YEAR, h.ngayLap), DATEPART(WEEK, h.ngayLap), h.idNV, nv.maNV, nv.tenNV
+                        ORDER BY tongDoanhThu DESC, nam DESC, tuan DESC`;
+            }
         } else if (period === 'month') {
-            query = `SELECT 
-                        DATEPART(YEAR, ngayLap) as nam,
-                        DATEPART(MONTH, ngayLap) as thang,
-                        COUNT(*) as soHoaDon,
-                        SUM(tongTien) as tongDoanhThu
-                    FROM HOADON
-                    WHERE ngayLap >= DATEADD(MONTH, -12, GETDATE())
-                    GROUP BY DATEPART(YEAR, ngayLap), DATEPART(MONTH, ngayLap)
-                    ORDER BY nam DESC, thang DESC`;
+            const whereClause = hasIdNV ? 'WHERE h.idNV = @idNV' : 'WHERE h.ngayLap >= DATEADD(MONTH, -12, GETDATE())';
+            if (hasIdNV && startDate && endDate) {
+                query = `SELECT 
+                            DATEPART(YEAR, h.ngayLap) as nam,
+                            DATEPART(MONTH, h.ngayLap) as thang,
+                            h.idNV,
+                            nv.maNV,
+                            nv.tenNV as tenNhanVien,
+                            COUNT(*) as soHoaDon,
+                            SUM(h.tongTien) as tongDoanhThu
+                        FROM HOADON h
+                        LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                        WHERE CAST(h.ngayLap AS DATE) BETWEEN @startDate AND @endDate AND h.idNV = @idNV
+                        GROUP BY DATEPART(YEAR, h.ngayLap), DATEPART(MONTH, h.ngayLap), h.idNV, nv.maNV, nv.tenNV
+                        ORDER BY tongDoanhThu DESC, nam DESC, thang DESC`;
+            } else {
+                query = `SELECT 
+                            DATEPART(YEAR, h.ngayLap) as nam,
+                            DATEPART(MONTH, h.ngayLap) as thang,
+                            h.idNV,
+                            nv.maNV,
+                            nv.tenNV as tenNhanVien,
+                            COUNT(*) as soHoaDon,
+                            SUM(h.tongTien) as tongDoanhThu
+                        FROM HOADON h
+                        LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                        ${whereClause}
+                        GROUP BY DATEPART(YEAR, h.ngayLap), DATEPART(MONTH, h.ngayLap), h.idNV, nv.maNV, nv.tenNV
+                        ORDER BY tongDoanhThu DESC, nam DESC, thang DESC`;
+            }
         } else if (period === 'quarter') {
-            query = `SELECT 
-                        DATEPART(YEAR, ngayLap) as nam,
-                        DATEPART(QUARTER, ngayLap) as quy,
-                        COUNT(*) as soHoaDon,
-                        SUM(tongTien) as tongDoanhThu
-                    FROM HOADON
-                    WHERE ngayLap >= DATEADD(YEAR, -3, GETDATE())
-                    GROUP BY DATEPART(YEAR, ngayLap), DATEPART(QUARTER, ngayLap)
-                    ORDER BY nam DESC, quy DESC`;
+            const whereClause = hasIdNV ? 'WHERE h.idNV = @idNV' : 'WHERE h.ngayLap >= DATEADD(YEAR, -3, GETDATE())';
+            if (hasIdNV && startDate && endDate) {
+                query = `SELECT 
+                            DATEPART(YEAR, h.ngayLap) as nam,
+                            DATEPART(QUARTER, h.ngayLap) as quy,
+                            h.idNV,
+                            nv.maNV,
+                            nv.tenNV as tenNhanVien,
+                            COUNT(*) as soHoaDon,
+                            SUM(h.tongTien) as tongDoanhThu
+                        FROM HOADON h
+                        LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                        WHERE CAST(h.ngayLap AS DATE) BETWEEN @startDate AND @endDate AND h.idNV = @idNV
+                        GROUP BY DATEPART(YEAR, h.ngayLap), DATEPART(QUARTER, h.ngayLap), h.idNV, nv.maNV, nv.tenNV
+                        ORDER BY tongDoanhThu DESC, nam DESC, quy DESC`;
+            } else {
+                query = `SELECT 
+                            DATEPART(YEAR, h.ngayLap) as nam,
+                            DATEPART(QUARTER, h.ngayLap) as quy,
+                            h.idNV,
+                            nv.maNV,
+                            nv.tenNV as tenNhanVien,
+                            COUNT(*) as soHoaDon,
+                            SUM(h.tongTien) as tongDoanhThu
+                        FROM HOADON h
+                        LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                        ${whereClause}
+                        GROUP BY DATEPART(YEAR, h.ngayLap), DATEPART(QUARTER, h.ngayLap), h.idNV, nv.maNV, nv.tenNV
+                        ORDER BY tongDoanhThu DESC, nam DESC, quy DESC`;
+            }
         } else if (period === 'year') {
-            query = `SELECT 
-                        DATEPART(YEAR, ngayLap) as nam,
-                        COUNT(*) as soHoaDon,
-                        SUM(tongTien) as tongDoanhThu
-                    FROM HOADON
-                    GROUP BY DATEPART(YEAR, ngayLap)
-                    ORDER BY nam DESC`;
+            const whereClause = hasIdNV ? 'WHERE h.idNV = @idNV' : '';
+            if (hasIdNV && startDate && endDate) {
+                query = `SELECT 
+                            DATEPART(YEAR, h.ngayLap) as nam,
+                            h.idNV,
+                            nv.maNV,
+                            nv.tenNV as tenNhanVien,
+                            COUNT(*) as soHoaDon,
+                            SUM(h.tongTien) as tongDoanhThu
+                        FROM HOADON h
+                        LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                        WHERE CAST(h.ngayLap AS DATE) BETWEEN @startDate AND @endDate AND h.idNV = @idNV
+                        GROUP BY DATEPART(YEAR, h.ngayLap), h.idNV, nv.maNV, nv.tenNV
+                        ORDER BY tongDoanhThu DESC, nam DESC`;
+            } else {
+                query = `SELECT 
+                            DATEPART(YEAR, h.ngayLap) as nam,
+                            h.idNV,
+                            nv.maNV,
+                            nv.tenNV as tenNhanVien,
+                            COUNT(*) as soHoaDon,
+                            SUM(h.tongTien) as tongDoanhThu
+                        FROM HOADON h
+                        LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                        ${whereClause}
+                        GROUP BY DATEPART(YEAR, h.ngayLap), h.idNV, nv.maNV, nv.tenNV
+                        ORDER BY tongDoanhThu DESC, nam DESC`;
+            }
         } else {
             return res.status(400).json({
                 success: false,
@@ -2774,6 +2864,7 @@ app.get('/api/thongke/doanhthu', async (req, res) => {
         const request = pool.request();
         if (startDate) request.input('startDate', sql.Date, startDate);
         if (endDate) request.input('endDate', sql.Date, endDate);
+        if (hasIdNV) request.input('idNV', sql.Int, parseInt(idNV));
         
         const result = await request.query(query);
         

@@ -60,11 +60,11 @@
             line-height: 1;
             position: relative;
             display: inline-block;
-            background: linear-gradient(to bottom, #1a2b48 0%, #4a5568 45%, #1a2b48 100%);
+            background: linear-gradient(to bottom, #ff9800 0%, #f39c12 45%, #e65100 100%);
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.2));
+            filter: drop-shadow(0px 2px 4px rgba(255, 152, 0, 0.3));
             margin-bottom: 8px;
         }
 
@@ -1011,6 +1011,44 @@
         <!-- Main Content -->
         <div class="main-content">
             <div id="page-content"></div>
+            
+            <!-- Invoice Detail Section (thay thế modal) -->
+            <div id="invoice-detail-section" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; overflow-y: auto; padding: 20px;">
+                <div style="max-width: 1000px; margin: 0 auto; background: white; border-radius: 12px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e0e0e0;">
+                        <h2 style="margin: 0; color: #1a2b48;">📄 Chi Tiết Hóa Đơn</h2>
+                        <button onclick="closeInvoiceDetailSection()" style="background: #dc2626; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600;">✕ Đóng</button>
+                    </div>
+                    <div id="invoice-detail-body" style="max-height: 70vh; overflow-y: auto;"></div>
+                    <div style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #e0e0e0; display: flex; gap: 10px; justify-content: flex-end;">
+                        <button class="btn btn-secondary" onclick="closeInvoiceDetailSection()">Đóng</button>
+                        <button class="btn btn-success" id="print-invoice-btn" onclick="printInvoiceFromDetail()" style="display: none;">🖨️ In Hóa Đơn</button>
+                        <button class="btn btn-primary" id="export-pdf-btn" onclick="exportPDFFromDetail()" style="display: none;">📄 Xuất PDF</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Return Product Section (thay thế modal) -->
+            <div id="return-product-section" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; overflow-y: auto; padding: 20px;">
+                <div style="max-width: 700px; margin: 0 auto; background: white; border-radius: 12px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e0e0e0;">
+                        <h2 style="margin: 0; color: #e65100;">↩️ Trả Hàng</h2>
+                        <button onclick="closeReturnProductSection()" style="background: #dc2626; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600;">✕ Đóng</button>
+                    </div>
+                    <div id="return-product-body"></div>
+                </div>
+            </div>
+            
+            <!-- Exchange Product Section (thay thế modal) -->
+            <div id="exchange-product-section" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; overflow-y: auto; padding: 20px;">
+                <div style="max-width: 700px; margin: 0 auto; background: white; border-radius: 12px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e0e0e0;">
+                        <h2 style="margin: 0; color: #1976d2;">🔄 Đổi Hàng</h2>
+                        <button onclick="closeExchangeProductSection()" style="background: #dc2626; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600;">✕ Đóng</button>
+                    </div>
+                    <div id="exchange-product-body"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1364,7 +1402,7 @@
                             <th>Mã Hàng</th>
                             <th>Tên Sản Phẩm</th>
                             <th>Số Lượng</th>
-                            <th>Đơn Vị</th>
+                         
                             <th>Giá Nhập</th>
                             <th>Giá Bán</th>
                             <th>Trạng Thái</th>
@@ -1376,7 +1414,7 @@
                                 <td><strong>${p.maHang}</strong></td>
                                 <td>${p.tenHang}</td>
                                 <td>${p.soluong}</td>
-                                <td>${p.donvi || '-'}</td>
+                            
                                 <td>${formatCurrency(p.gianhap)}</td>
                                 <td><strong class="value-success">${formatCurrency(p.giaban)}</strong></td>
                                 <td>
@@ -2479,37 +2517,14 @@
                 if (printBtn) printBtn.style.display = 'inline-flex';
                 if (exportBtn) exportBtn.style.display = 'inline-flex';
                 
-                // Hiển thị modal
-                const modal = document.getElementById('invoice-detail-modal');
-                if (!modal) {
-                    console.error('Modal element not found!');
-                    showToast('Không tìm thấy modal', 'error');
+                // Hiển thị section thay vì modal
+                const section = document.getElementById('invoice-detail-section');
+                if (!section) {
+                    showToast('Không tìm thấy section hiển thị', 'error');
                     return;
                 }
-                
-                console.log('Modal element found, showing...');
-                
-                // Đơn giản: chỉ cần thêm class 'active' và 'show' theo CSS đã có
-                modal.classList.add('active');
-                modal.classList.add('show');
-                
-                // Đảm bảo modal hiển thị bằng inline style
-                modal.style.display = 'flex';
-                modal.style.zIndex = '10000';
-                
-                console.log('Modal classes:', modal.className);
-                console.log('Modal display style:', modal.style.display);
-                
-                // Verify sau 100ms
-                setTimeout(() => {
-                    const computed = window.getComputedStyle(modal);
-                    console.log('Computed display:', computed.display);
-                    if (computed.display !== 'flex') {
-                        console.warn('Modal still hidden, forcing display...');
-                        modal.style.display = 'flex';
-                        modal.style.setProperty('display', 'flex', 'important');
-                    }
-                }, 100);
+                section.style.display = 'block';
+                section.scrollTop = 0;
             } catch (error) {
                 console.error('Error in loadInvoiceDetail:', error);
                 showToast('Lỗi: ' + error.message, 'error');
@@ -2560,22 +2575,88 @@
             }
         }
 
-        function closeInvoiceDetailModal() {
-            const modal = document.getElementById('invoice-detail-modal');
+        // Helper function để hiển thị modal một cách chắc chắn
+        function showModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (!modal) {
+                console.error(`Modal ${modalId} not found!`);
+                return false;
+            }
+            
+            // Xóa tất cả inline styles cũ
+            modal.removeAttribute('style');
+            
+            // Set inline styles trực tiếp
+            modal.style.cssText = `
+                display: flex !important;
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                background: rgba(0, 0, 0, 0.6) !important;
+                z-index: 99999 !important;
+                justify-content: center !important;
+                align-items: center !important;
+                backdrop-filter: blur(5px) !important;
+            `;
+            
+            // Thêm class
+            modal.classList.add('active', 'show');
+            
+            console.log(`Modal ${modalId} displayed`);
+            return true;
+        }
+        
+        // Helper function để ẩn modal
+        function hideModal(modalId) {
+            const modal = document.getElementById(modalId);
             if (modal) {
-                modal.classList.remove('active');
-                modal.classList.remove('show');
-                modal.setAttribute('style', 'display: none !important;');
+                modal.style.display = 'none';
+                modal.classList.remove('active', 'show');
+                console.log(`Modal ${modalId} hidden`);
             }
         }
         
-        // Đảm bảo modal có thể đóng khi click bên ngoài
+        function closeInvoiceDetailModal() {
+            closeInvoiceDetailSection();
+        }
+        
+        function closeInvoiceDetailSection() {
+            const section = document.getElementById('invoice-detail-section');
+            if (section) {
+                section.style.display = 'none';
+            }
+        }
+        
+        // Đảm bảo section có thể đóng khi click bên ngoài
         window.addEventListener('load', function() {
-            const modal = document.getElementById('invoice-detail-modal');
-            if (modal) {
-                modal.addEventListener('click', function(e) {
-                    if (e.target === modal) {
-                        closeInvoiceDetailModal();
+            // Invoice detail section
+            const invoiceSection = document.getElementById('invoice-detail-section');
+            if (invoiceSection) {
+                invoiceSection.addEventListener('click', function(e) {
+                    if (e.target === invoiceSection) {
+                        closeInvoiceDetailSection();
+                    }
+                });
+            }
+            
+            // Return product section
+            const returnSection = document.getElementById('return-product-section');
+            if (returnSection) {
+                returnSection.addEventListener('click', function(e) {
+                    if (e.target === returnSection) {
+                        closeReturnProductSection();
+                    }
+                });
+            }
+            
+            // Exchange product section
+            const exchangeSection = document.getElementById('exchange-product-section');
+            if (exchangeSection) {
+                exchangeSection.addEventListener('click', function(e) {
+                    if (e.target === exchangeSection) {
+                        closeExchangeProductSection();
                     }
                 });
             }
@@ -2753,6 +2834,10 @@
                         <option value="year">Theo Năm</option>
                     </select>
                     <div id="stat-date-filters"></div>
+                    <select id="stat-nhanvien" class="search-input" style="max-width: 200px;">
+                        <option value="">Tất cả nhân viên</option>
+                        ${nhanvienList.map(nv => `<option value="${nv.id}">${nv.tenNV} (${nv.maNV})</option>`).join('')}
+                    </select>
                     <button class="btn btn-primary" onclick="loadStatistics()">Xem Thống Kê</button>
                 </div>
                 <div class="stats-row" id="stat-summary"></div>
@@ -2823,7 +2908,12 @@
         async function loadStatistics() {
             try {
                 const period = document.getElementById('stat-period').value;
+                const idNV = document.getElementById('stat-nhanvien')?.value || '';
                 let url = `${API_BASE}/thongke/doanhthu?period=${period}`;
+                
+                if (idNV) {
+                    url += `&idNV=${idNV}`;
+                }
                 
                 if (period === 'day') {
                     const startDate = document.getElementById('stat-start-date').value;
@@ -2903,54 +2993,77 @@
             let headers = '';
             let rows = '';
             
+            // Kiểm tra xem có dữ liệu nhân viên không (nếu API trả về)
+            const hasNhanVien = data[0] && (data[0].maNV || data[0].tenNhanVien || data[0].idNV);
+            
             if (period === 'day') {
-                headers = '<th>Ngày</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
-                rows = data.map(s => `
+                headers = hasNhanVien ? '<th>Ngày</th><th>Nhân Viên</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>' : '<th>Ngày</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
+                rows = data.map(s => {
+                    const nv = hasNhanVien ? (nhanvienList.find(n => n.id === s.idNV || n.maNV === s.maNV) || { tenNV: s.tenNhanVien || s.maNV || '-', maNV: s.maNV || '-' }) : null;
+                    return `
                     <tr>
                         <td><strong>${formatDate(s.ngay)}</strong></td>
+                        ${hasNhanVien ? `<td>${nv ? `${nv.tenNV} (${nv.maNV})` : '-'}</td>` : ''}
                         <td>${s.soHoaDon}</td>
                         <td><strong class="value-success">${formatCurrency(s.tongDoanhThu)}</strong></td>
                     </tr>
-                `).join('');
+                `;
+                }).join('');
             } else if (period === 'week') {
-                headers = '<th>Năm</th><th>Tuần</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
-                rows = data.map(s => `
+                headers = hasNhanVien ? '<th>Năm</th><th>Tuần</th><th>Nhân Viên</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>' : '<th>Năm</th><th>Tuần</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
+                rows = data.map(s => {
+                    const nv = hasNhanVien ? (nhanvienList.find(n => n.id === s.idNV || n.maNV === s.maNV) || { tenNV: s.tenNhanVien || s.maNV || '-', maNV: s.maNV || '-' }) : null;
+                    return `
                     <tr>
                         <td><strong>${s.nam}</strong></td>
                         <td>Tuần ${s.tuan}</td>
+                        ${hasNhanVien ? `<td>${nv ? `${nv.tenNV} (${nv.maNV})` : '-'}</td>` : ''}
                         <td>${s.soHoaDon}</td>
                         <td><strong class="value-success">${formatCurrency(s.tongDoanhThu)}</strong></td>
                     </tr>
-                `).join('');
+                `;
+                }).join('');
             } else if (period === 'month') {
-                headers = '<th>Năm</th><th>Tháng</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
-                rows = data.map(s => `
+                headers = hasNhanVien ? '<th>Năm</th><th>Tháng</th><th>Nhân Viên</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>' : '<th>Năm</th><th>Tháng</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
+                rows = data.map(s => {
+                    const nv = hasNhanVien ? (nhanvienList.find(n => n.id === s.idNV || n.maNV === s.maNV) || { tenNV: s.tenNhanVien || s.maNV || '-', maNV: s.maNV || '-' }) : null;
+                    return `
                     <tr>
                         <td><strong>${s.nam}</strong></td>
                         <td>Tháng ${s.thang}</td>
+                        ${hasNhanVien ? `<td>${nv ? `${nv.tenNV} (${nv.maNV})` : '-'}</td>` : ''}
                         <td>${s.soHoaDon}</td>
                         <td><strong class="value-success">${formatCurrency(s.tongDoanhThu)}</strong></td>
                     </tr>
-                `).join('');
+                `;
+                }).join('');
             } else if (period === 'quarter') {
-                headers = '<th>Năm</th><th>Quý</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
-                rows = data.map(s => `
+                headers = hasNhanVien ? '<th>Năm</th><th>Quý</th><th>Nhân Viên</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>' : '<th>Năm</th><th>Quý</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
+                rows = data.map(s => {
+                    const nv = hasNhanVien ? (nhanvienList.find(n => n.id === s.idNV || n.maNV === s.maNV) || { tenNV: s.tenNhanVien || s.maNV || '-', maNV: s.maNV || '-' }) : null;
+                    return `
                     <tr>
                         <td><strong>${s.nam}</strong></td>
                         <td>Quý ${s.quy}</td>
+                        ${hasNhanVien ? `<td>${nv ? `${nv.tenNV} (${nv.maNV})` : '-'}</td>` : ''}
                         <td>${s.soHoaDon}</td>
                         <td><strong class="value-success">${formatCurrency(s.tongDoanhThu)}</strong></td>
                     </tr>
-                `).join('');
+                `;
+                }).join('');
             } else if (period === 'year') {
-                headers = '<th>Năm</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
-                rows = data.map(s => `
+                headers = hasNhanVien ? '<th>Năm</th><th>Nhân Viên</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>' : '<th>Năm</th><th>Số Hóa Đơn</th><th>Tổng Doanh Thu</th>';
+                rows = data.map(s => {
+                    const nv = hasNhanVien ? (nhanvienList.find(n => n.id === s.idNV || n.maNV === s.maNV) || { tenNV: s.tenNhanVien || s.maNV || '-', maNV: s.maNV || '-' }) : null;
+                    return `
                     <tr>
                         <td><strong>${s.nam}</strong></td>
+                        ${hasNhanVien ? `<td>${nv ? `${nv.tenNV} (${nv.maNV})` : '-'}</td>` : ''}
                         <td>${s.soHoaDon}</td>
                         <td><strong class="value-success">${formatCurrency(s.tongDoanhThu)}</strong></td>
                     </tr>
-                `).join('');
+                `;
+                }).join('');
             }
 
             container.innerHTML = `
@@ -3017,60 +3130,196 @@
         // ==================== TRẢ HÀNG ====================
         async function openTraHangModal(maHD) {
             try {
+                // 1. Kiểm tra dữ liệu đầu vào
                 const order = ordersList.find(o => o.maHD === maHD);
                 if (!order || !order.id) {
-                    showToast('Không tìm thấy hóa đơn', 'error');
+                    showToast('Không tìm thấy hóa đơn: ' + maHD, 'error');
                     return;
                 }
-                
-                const idHD = order.id;
-                const response = await fetch(`${API_BASE}/chitiethd/${idHD}`);
-                const result = await response.json();
-                
-                if (!result.success || !result.data.length) {
-                    showToast('Không có chi tiết hóa đơn', 'error');
-                    return;
-                }
-                
-                const details = result.data;
+
+                // 2. Kiểm tra phần tử HTML có tồn tại không
+                const modal = document.getElementById('return-product-modal');
                 const body = document.getElementById('return-product-body');
+                
+                if (!modal || !body) {
+                    console.error('Lỗi: Thiếu ID return-product-modal hoặc return-product-body trong HTML');
+                    showToast('Lỗi giao diện hệ thống!', 'error');
+                    return;
+                }
+
+                // 3. Gọi API lấy chi tiết hóa đơn
+                const response = await fetch(`${API_BASE}/chitiethd/${order.id}`);
+                const result = await response.json();
+
+                if (!result.success || !result.data || result.data.length === 0) {
+                    showToast('Không có sản phẩm nào có thể trả!', 'error');
+                    return;
+                }
+
+                const details = result.data;
+
+                // 4. Render giao diện vào Modal
                 body.innerHTML = `
                     <div style="padding: 20px;">
-                        <p style="margin-bottom: 15px;"><strong>Hóa đơn:</strong> ${maHD}</p>
+                        <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                            <h4 style="margin: 0; color: #e65100; font-size: 16px;">📦 Trả Hàng - Hóa Đơn: ${maHD}</h4>
+                            <p style="margin: 5px 0 0 0; color: #666; font-size: 12px;">Nhập số lượng sản phẩm khách muốn trả lại</p>
+                        </div>
+                        
                         <div id="return-items-list" style="max-height: 400px; overflow-y: auto; margin-bottom: 20px;">
-                            ${details.map(item => `
-                                <div style="padding: 15px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px;">
+                            ${details.map((item, index) => {
+                                const maxQty = item.soluong;
+                                const itemID = item.idHang;
+                                const tenHang = item.tenHang || 'Sản phẩm ' + (index + 1);
+                                
+                                return `
+                                <div class="return-item-card" style="padding: 15px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; background: #fff;">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <div>
-                                            <strong>${item.tenHang || item.maHang}</strong>
-                                            <p style="font-size: 12px; color: #666; margin: 5px 0;">Mã: ${item.maHang}</p>
-                                            <p style="font-size: 12px; color: #666;">Đã bán: ${item.soluong} sản phẩm</p>
+                                        <div style="flex: 1;">
+                                            <strong style="display: block; color: #1a2b48;">${tenHang}</strong>
+                                            <small style="color: #666;">Đã mua: <b>${maxQty}</b> | Đơn giá: ${formatCurrency(item.dongia)}</small>
                                         </div>
-                                        <div style="display: flex; align-items: center; gap: 10px;">
-                                            <label style="font-size: 12px;">Số lượng trả:</label>
-                                            <input type="number" id="return-qty-${item.idHang}" 
-                                                   min="1" max="${item.soluong}" value="1" 
-                                                   style="width: 80px; padding: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <input type="number" 
+                                                class="input-return-qty" 
+                                                data-idhang="${itemID}" 
+                                                data-max="${maxQty}" 
+                                                data-price="${item.dongia}"
+                                                value="0" min="0" max="${maxQty}"
+                                                style="width: 70px; padding: 5px; border: 2px solid #ff9800; border-radius: 4px; text-align: center;">
+                                            <span style="font-size: 12px; color: #999;">/ ${maxQty}</span>
                                         </div>
                                     </div>
-                                </div>
-                            `).join('')}
+                                </div>`;
+                            }).join('')}
                         </div>
-                        <div class="form-actions">
-                            <button type="button" class="btn btn-outline" onclick="closeReturnProductModal()">Hủy</button>
-                            <button type="button" class="btn btn-warning" onclick="submitReturnProduct('${maHD}')">Xác nhận trả hàng</button>
+
+                        <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; border-left: 4px solid #ff9800;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Tổng tiền hoàn lại:</span>
+                                <strong id="display-total-refund" style="color: #e65100; font-size: 18px;">0đ</strong>
+                            </div>
+                        </div>
+
+                        <div class="form-actions" style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                            <button type="button" class="btn btn-outline" onclick="closeReturnProductModal()">Đóng</button>
+                            <button type="button" class="btn btn-warning" id="submit-return-btn" disabled onclick="submitReturnProduct('${maHD}')">
+                                Xác nhận trả hàng
+                            </button>
                         </div>
                     </div>
                 `;
-                
-                document.getElementById('return-product-modal').classList.add('active');
+
+                // 5. Hiển thị Section ngay lập tức
+                const section = document.getElementById('return-product-section');
+                if (!section) {
+                    showToast('Không tìm thấy section trả hàng', 'error');
+                    return;
+                }
+                section.style.display = 'block';
+                section.scrollTop = 0;
+
+                // 6. Gán sự kiện tính toán tự động khi nhập số lượng
+                const returnInputs = body.querySelectorAll('.input-return-qty');
+                returnInputs.forEach(input => {
+                    input.addEventListener('input', () => {
+                        let totalRefund = 0;
+                        let totalQty = 0;
+
+                        returnInputs.forEach(inp => {
+                            const qty = parseInt(inp.value) || 0;
+                            const price = parseFloat(inp.dataset.price) || 0;
+                            totalRefund += qty * price;
+                            totalQty += qty;
+                        });
+
+                        // Cập nhật giao diện
+                        document.getElementById('display-total-refund').innerText = formatCurrency(totalRefund);
+                        document.getElementById('submit-return-btn').disabled = (totalQty <= 0);
+                    });
+                });
+
             } catch (error) {
-                showToast('Lỗi: ' + error.message, 'error');
+                console.error('Lỗi thực thi:', error);
+                showToast('Không thể mở chức năng trả hàng!', 'error');
             }
         }
 
         function closeReturnProductModal() {
-            document.getElementById('return-product-modal').classList.remove('active');
+            closeReturnProductSection();
+        }
+        
+        function closeReturnProductSection() {
+            const section = document.getElementById('return-product-section');
+            if (section) {
+                section.style.display = 'none';
+            }
+        }
+        
+        function updateReturnQty(idHang, maxQty, value) {
+            const qty = parseInt(value) || 0;
+            if (qty < 0) {
+                document.getElementById(`return-qty-${idHang}`).value = 0;
+                return;
+            }
+            if (qty > maxQty) {
+                document.getElementById(`return-qty-${idHang}`).value = maxQty;
+                return;
+            }
+            
+            // Lấy thông tin sản phẩm để tính tiền
+            const detail = window.currentReturnDetails ? window.currentReturnDetails.find(d => d.idHang === idHang) : null;
+            if (detail) {
+                const infoDiv = document.getElementById(`return-info-${idHang}`);
+                const qtyDisplay = document.getElementById(`return-qty-display-${idHang}`);
+                const amountDisplay = document.getElementById(`return-amount-${idHang}`);
+                
+                if (qty > 0) {
+                    infoDiv.style.display = 'block';
+                    qtyDisplay.textContent = qty;
+                    const amount = qty * parseFloat(detail.dongia || 0);
+                    amountDisplay.textContent = formatCurrency(amount);
+                } else {
+                    infoDiv.style.display = 'none';
+                }
+            }
+            
+            // Cập nhật tổng số lượng trả
+            updateTotalReturnQty();
+        }
+        
+        function updateTotalReturnQty() {
+            const details = window.currentReturnDetails || [];
+            let totalQty = 0;
+            let hasReturn = false;
+            
+            details.forEach(item => {
+                const input = document.getElementById(`return-qty-${item.idHang}`);
+                if (input) {
+                    const qty = parseInt(input.value) || 0;
+                    if (qty > 0) {
+                        totalQty += qty;
+                        hasReturn = true;
+                    }
+                }
+            });
+            
+            const totalQtyEl = document.getElementById('total-return-qty');
+            if (totalQtyEl) {
+                totalQtyEl.textContent = totalQty;
+            }
+            
+            const submitBtn = document.getElementById('submit-return-btn');
+            if (submitBtn) {
+                submitBtn.disabled = !hasReturn;
+                if (hasReturn) {
+                    submitBtn.style.opacity = '1';
+                    submitBtn.style.cursor = 'pointer';
+                } else {
+                    submitBtn.style.opacity = '0.5';
+                    submitBtn.style.cursor = 'not-allowed';
+                }
+            }
         }
 
         async function submitReturnProduct(maHD) {
@@ -3082,31 +3331,53 @@
                 }
                 
                 const idHD = order.id;
-                const response = await fetch(`${API_BASE}/chitiethd/${idHD}`);
-                const result = await response.json();
-                
-                if (!result.success || !result.data.length) {
-                    showToast('Không có chi tiết hóa đơn', 'error');
+                const body = document.getElementById('return-product-body');
+                if (!body) {
+                    showToast('Lỗi: Không tìm thấy form trả hàng', 'error');
                     return;
                 }
                 
-                const details = result.data;
+                // Lấy tất cả input có class .input-return-qty
+                const returnInputs = body.querySelectorAll('.input-return-qty');
                 const items = [];
                 
-                for (const item of details) {
-                    const qtyInput = document.getElementById(`return-qty-${item.idHang}`);
-                    if (qtyInput && parseInt(qtyInput.value) > 0) {
+                returnInputs.forEach(input => {
+                    const qty = parseInt(input.value) || 0;
+                    const idHang = parseInt(input.dataset.idhang);
+                    const maxQty = parseInt(input.dataset.max) || 0;
+                    
+                    if (qty > 0) {
+                        if (qty > maxQty) {
+                            showToast(`Số lượng trả (${qty}) vượt quá số lượng đã mua (${maxQty})`, 'error');
+                            return;
+                        }
                         items.push({
-                            idHang: item.idHang,
-                            soluong: parseInt(qtyInput.value)
+                            idHang: idHang,
+                            soluong: qty
                         });
                     }
-                }
+                });
                 
                 if (items.length === 0) {
-                    showToast('Vui lòng chọn sản phẩm cần trả', 'error');
+                    showToast('Vui lòng nhập số lượng sản phẩm cần trả', 'error');
                     return;
                 }
+                
+                // Xác nhận trước khi trả
+                const confirmMsg = `Xác nhận trả ${items.length} loại sản phẩm?\n\n` +
+                    items.map(item => {
+                        // Tìm tên sản phẩm từ input
+                        const input = Array.from(returnInputs).find(inp => parseInt(inp.dataset.idhang) === item.idHang);
+                        const card = input ? input.closest('.return-item-card') : null;
+                        const productName = card ? card.querySelector('strong').textContent : `Sản phẩm ID ${item.idHang}`;
+                        return `- ${productName}: ${item.soluong} sản phẩm`;
+                    }).join('\n');
+                
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+                
+                showToast('Đang xử lý trả hàng...', 'info');
                 
                 const returnRes = await fetch(`${API_BASE}/hoadon/${idHD}/tra-hang`, {
                     method: 'POST',
@@ -3117,13 +3388,15 @@
                 const returnResult = await returnRes.json();
                 
                 if (returnResult.success) {
-                    showToast('Trả hàng thành công', 'success');
+                    showToast('Trả hàng thành công! Số lượng đã được cập nhật vào kho.', 'success');
                     closeReturnProductModal();
                     await loadOrders();
+                    await loadProducts(); // Reload sản phẩm để cập nhật số lượng trong kho
                 } else {
                     showToast(returnResult.message || 'Lỗi trả hàng', 'error');
                 }
             } catch (error) {
+                console.error('Lỗi submitReturnProduct:', error);
                 showToast('Lỗi: ' + error.message, 'error');
             }
         }
@@ -3148,41 +3421,108 @@
                 
                 const details = result.data;
                 const body = document.getElementById('exchange-product-body');
-                body.innerHTML = `
-                    <div style="padding: 20px;">
-                        <p style="margin-bottom: 15px;"><strong>Hóa đơn:</strong> ${maHD}</p>
-                        <div class="form-group">
-                            <label>Chọn sản phẩm cần đổi:</label>
-                            <select id="exchange-old-product" class="form-group" style="width: 100%; padding: 10px; border: 2px solid #e8e8e8; border-radius: 8px;" onchange="loadExchangeNewProduct()">
-                                <option value="">-- Chọn sản phẩm --</option>
-                                ${details.map(item => `
-                                    <option value="${item.idHang}" data-qty="${item.soluong}">${item.tenHang || item.maHang} (Đã bán: ${item.soluong})</option>
-                                `).join('')}
-                            </select>
+                if (!body) {
+                    console.error('exchange-product-body element not found!');
+                    showToast('Lỗi: Không tìm thấy phần tử hiển thị đổi hàng', 'error');
+                    return;
+                }
+                console.log('Setting exchange-product-body innerHTML, details count:', details.length);
+                
+                try {
+                    body.innerHTML = `
+                        <div style="padding: 20px;">
+                            <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                                <h4 style="margin: 0; color: #1976d2; font-size: 16px;">🔄 Đổi Hàng - Hóa Đơn: ${maHD}</h4>
+                                <p style="margin: 5px 0 0 0; color: #666; font-size: 12px;">Chọn sản phẩm cần đổi và sản phẩm thay thế</p>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 20px;">
+                                <label style="font-weight: 600; color: #1a2b48; margin-bottom: 8px; display: block;">📦 Chọn sản phẩm cần đổi:</label>
+                                <select id="exchange-old-product" class="form-group" style="width: 100%; padding: 12px; border: 2px solid #e8e8e8; border-radius: 8px; font-size: 14px;" onchange="loadExchangeNewProduct()">
+                                    <option value="">-- Chọn sản phẩm cần đổi --</option>
+                                    ${details.map(item => {
+                                        const tenHang = (item.tenHang || item.maHang || '').replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+                                        const maHang = (item.maHang || '').replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+                                        const dongia = parseFloat(item.dongia) || 0;
+                                        const soluong = parseInt(item.soluong) || 0;
+                                        return `
+                                    <option value="${item.idHang}" data-qty="${soluong}" data-name="${tenHang}" data-price="${dongia}">
+                                        ${tenHang} (${maHang}) - Đã bán: ${soluong} - Giá: ${formatCurrency(dongia)}
+                                    </option>
+                                `;
+                                    }).join('')}
+                                </select>
+                            </div>
+                        
+                        <div id="old-product-info" style="display: none; padding: 15px; background: #fff3e0; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ff9800;">
+                            <p style="margin: 0; font-size: 13px; color: #e65100;">
+                                <strong>Sản phẩm cũ:</strong> <span id="old-product-name"></span><br>
+                                <strong>Số lượng có thể đổi:</strong> <span id="old-product-max-qty"></span>
+                            </p>
                         </div>
-                        <div class="form-group">
-                            <label>Số lượng đổi:</label>
+                        
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="font-weight: 600; color: #1a2b48; margin-bottom: 8px; display: block;">🔢 Số lượng đổi:</label>
                             <input type="number" id="exchange-qty" min="1" value="1" 
-                                   style="width: 100%; padding: 10px; border: 2px solid #e8e8e8; border-radius: 8px;">
+                                   style="width: 100%; padding: 12px; border: 2px solid #e8e8e8; border-radius: 8px; font-size: 14px; text-align: center;"
+                                   onchange="updateExchangeQty()">
+                            <p style="font-size: 11px; color: #666; margin: 5px 0 0 0;">Tối đa: <span id="exchange-max-qty">1</span> sản phẩm</p>
                         </div>
-                        <div class="form-group">
-                            <label>Chọn sản phẩm mới:</label>
-                            <select id="exchange-new-product" class="form-group" style="width: 100%; padding: 10px; border: 2px solid #e8e8e8; border-radius: 8px;">
+                        
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label style="font-weight: 600; color: #1a2b48; margin-bottom: 8px; display: block;">✨ Chọn sản phẩm mới:</label>
+                            <select id="exchange-new-product" class="form-group" style="width: 100%; padding: 12px; border: 2px solid #e8e8e8; border-radius: 8px; font-size: 14px;" onchange="updateExchangeNewProduct()">
                                 <option value="">-- Chọn sản phẩm mới --</option>
                                 ${products.filter(p => p.soluong > 0).map(p => `
-                                    <option value="${p.id}">${p.tenHang} (${p.maHang}) - Còn: ${p.soluong}</option>
+                                    <option value="${p.id}" data-name="${p.tenHang}" data-stock="${p.soluong}" data-price="${p.giaban || p.gianhap || 0}">
+                                        ${p.tenHang} (${p.maHang}) - Còn: ${p.soluong} - Giá: ${formatCurrency(p.giaban || p.gianhap || 0)}
+                                    </option>
                                 `).join('')}
                             </select>
                         </div>
+                        
+                        <div id="new-product-info" style="display: none; padding: 15px; background: #e8f5e9; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #4caf50;">
+                            <p style="margin: 0; font-size: 13px; color: #2e7d32;">
+                                <strong>Sản phẩm mới:</strong> <span id="new-product-name"></span><br>
+                                <strong>Tồn kho:</strong> <span id="new-product-stock"></span> sản phẩm<br>
+                                <strong>Giá:</strong> <span id="new-product-price"></span>
+                            </p>
+                        </div>
+                        
+                        <div id="exchange-summary" style="display: none; padding: 15px; background: #f5f5f5; border-radius: 8px; margin-bottom: 15px;">
+                            <h5 style="margin: 0 0 10px 0; color: #1a2b48; font-size: 14px;">📊 Tóm tắt đổi hàng:</h5>
+                            <div style="font-size: 12px; color: #666;">
+                                <p style="margin: 5px 0;"><strong>Trả về kho:</strong> <span id="summary-return"></span></p>
+                                <p style="margin: 5px 0;"><strong>Lấy từ kho:</strong> <span id="summary-take"></span></p>
+                                <p style="margin: 5px 0;"><strong>Chênh lệch giá:</strong> <span id="summary-diff"></span></p>
+                            </div>
+                        </div>
+                        
                         <div class="form-actions">
                             <button type="button" class="btn btn-outline" onclick="closeExchangeProductModal()">Hủy</button>
-                            <button type="button" class="btn btn-primary" onclick="submitExchangeProduct('${maHD}')">Xác nhận đổi hàng</button>
+                            <button type="button" class="btn btn-primary" onclick="submitExchangeProduct('${maHD}')" id="submit-exchange-btn" disabled>
+                                <span style="margin-right: 5px;">🔄</span>Xác nhận đổi hàng
+                            </button>
                         </div>
                     </div>
                 `;
+                    console.log('Exchange product body innerHTML set successfully');
+                } catch (innerError) {
+                    console.error('Error setting exchange-product-body innerHTML:', innerError);
+                    showToast('Lỗi khi tạo giao diện đổi hàng: ' + innerError.message, 'error');
+                    return;
+                }
                 
-                document.getElementById('exchange-product-modal').classList.add('active');
+                // Hiển thị Section
+                const section = document.getElementById('exchange-product-section');
+                if (!section) {
+                    showToast('Không tìm thấy section đổi hàng', 'error');
+                    return;
+                }
+                section.style.display = 'block';
+                section.scrollTop = 0;
             } catch (error) {
+                console.error('Error in openDoiHangModal:', error);
                 showToast('Lỗi: ' + error.message, 'error');
             }
         }
@@ -3190,16 +3530,152 @@
         function loadExchangeNewProduct() {
             const oldProductSelect = document.getElementById('exchange-old-product');
             const qtyInput = document.getElementById('exchange-qty');
+            const maxQtyEl = document.getElementById('exchange-max-qty');
+            const oldProductInfo = document.getElementById('old-product-info');
+            const oldProductName = document.getElementById('old-product-name');
+            const oldProductMaxQty = document.getElementById('old-product-max-qty');
+            
             if (oldProductSelect && qtyInput) {
                 const selectedOption = oldProductSelect.options[oldProductSelect.selectedIndex];
-                const maxQty = selectedOption ? parseInt(selectedOption.dataset.qty) : 1;
-                qtyInput.max = maxQty;
-                qtyInput.value = Math.min(parseInt(qtyInput.value) || 1, maxQty);
+                if (selectedOption && selectedOption.value) {
+                    const maxQty = parseInt(selectedOption.dataset.qty) || 1;
+                    const productName = selectedOption.dataset.name || '';
+                    
+                    qtyInput.max = maxQty;
+                    qtyInput.value = Math.min(parseInt(qtyInput.value) || 1, maxQty);
+                    if (maxQtyEl) maxQtyEl.textContent = maxQty;
+                    
+                    if (oldProductInfo) {
+                        oldProductInfo.style.display = 'block';
+                        if (oldProductName) oldProductName.textContent = productName;
+                        if (oldProductMaxQty) oldProductMaxQty.textContent = maxQty + ' sản phẩm';
+                    }
+                } else {
+                    if (oldProductInfo) oldProductInfo.style.display = 'none';
+                }
+            }
+            updateExchangeSummary();
+        }
+        
+        function updateExchangeNewProduct() {
+            const newProductSelect = document.getElementById('exchange-new-product');
+            const newProductInfo = document.getElementById('new-product-info');
+            const newProductName = document.getElementById('new-product-name');
+            const newProductStock = document.getElementById('new-product-stock');
+            const newProductPrice = document.getElementById('new-product-price');
+            
+            if (newProductSelect) {
+                const selectedOption = newProductSelect.options[newProductSelect.selectedIndex];
+                if (selectedOption && selectedOption.value) {
+                    const productName = selectedOption.dataset.name || '';
+                    const stock = parseInt(selectedOption.dataset.stock) || 0;
+                    const price = parseFloat(selectedOption.dataset.price) || 0;
+                    
+                    if (newProductInfo) {
+                        newProductInfo.style.display = 'block';
+                        if (newProductName) newProductName.textContent = productName;
+                        if (newProductStock) newProductStock.textContent = stock + ' sản phẩm';
+                        if (newProductPrice) newProductPrice.textContent = formatCurrency(price);
+                    }
+                } else {
+                    if (newProductInfo) newProductInfo.style.display = 'none';
+                }
+            }
+            updateExchangeSummary();
+        }
+        
+        function updateExchangeQty() {
+            const qtyInput = document.getElementById('exchange-qty');
+            const oldProductSelect = document.getElementById('exchange-old-product');
+            
+            if (qtyInput && oldProductSelect) {
+                const selectedOption = oldProductSelect.options[oldProductSelect.selectedIndex];
+                if (selectedOption && selectedOption.value) {
+                    const maxQty = parseInt(selectedOption.dataset.qty) || 1;
+                    const qty = parseInt(qtyInput.value) || 1;
+                    
+                    if (qty > maxQty) {
+                        qtyInput.value = maxQty;
+                        showToast(`Số lượng tối đa là ${maxQty}`, 'warning');
+                    }
+                    if (qty < 1) {
+                        qtyInput.value = 1;
+                    }
+                }
+            }
+            updateExchangeSummary();
+        }
+        
+        function updateExchangeSummary() {
+            const oldProductSelect = document.getElementById('exchange-old-product');
+            const newProductSelect = document.getElementById('exchange-new-product');
+            const qtyInput = document.getElementById('exchange-qty');
+            const summaryDiv = document.getElementById('exchange-summary');
+            const submitBtn = document.getElementById('submit-exchange-btn');
+            
+            if (!oldProductSelect || !newProductSelect || !qtyInput) return;
+            
+            const oldOption = oldProductSelect.options[oldProductSelect.selectedIndex];
+            const newOption = newProductSelect.options[newProductSelect.selectedIndex];
+            const qty = parseInt(qtyInput.value) || 0;
+            
+            if (oldOption && oldOption.value && newOption && newOption.value && qty > 0) {
+                const oldName = oldOption.dataset.name || '';
+                const oldPrice = parseFloat(oldOption.dataset.price) || 0;
+                const newName = newOption.dataset.name || '';
+                const newPrice = parseFloat(newOption.dataset.price) || 0;
+                const newStock = parseInt(newOption.dataset.stock) || 0;
+                
+                // Kiểm tra tồn kho
+                if (qty > newStock) {
+                    if (summaryDiv) summaryDiv.style.display = 'none';
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        submitBtn.style.opacity = '0.5';
+                    }
+                    showToast(`Sản phẩm mới chỉ còn ${newStock} sản phẩm trong kho`, 'error');
+                    return;
+                }
+                
+                if (summaryDiv) {
+                    summaryDiv.style.display = 'block';
+                    const summaryReturn = document.getElementById('summary-return');
+                    const summaryTake = document.getElementById('summary-take');
+                    const summaryDiff = document.getElementById('summary-diff');
+                    
+                    if (summaryReturn) summaryReturn.textContent = `${qty} x ${oldName} (${formatCurrency(oldPrice)})`;
+                    if (summaryTake) summaryTake.textContent = `${qty} x ${newName} (${formatCurrency(newPrice)})`;
+                    
+                    const diff = (newPrice - oldPrice) * qty;
+                    if (summaryDiff) {
+                        summaryDiff.textContent = formatCurrency(Math.abs(diff));
+                        summaryDiff.style.color = diff >= 0 ? '#dc2626' : '#059669';
+                    }
+                }
+                
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.style.opacity = '1';
+                    submitBtn.style.cursor = 'pointer';
+                }
+            } else {
+                if (summaryDiv) summaryDiv.style.display = 'none';
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.style.opacity = '0.5';
+                }
             }
         }
 
         function closeExchangeProductModal() {
-            document.getElementById('exchange-product-modal').classList.remove('active');
+            closeExchangeProductSection();
+        }
+        
+        function closeExchangeProductSection() {
+            const section = document.getElementById('exchange-product-section');
+            if (section) {
+                section.style.display = 'none';
+            }
         }
 
         async function submitExchangeProduct(maHD) {
@@ -3220,6 +3696,34 @@
                     return;
                 }
                 
+                // Lấy thông tin sản phẩm để hiển thị xác nhận
+                const oldOption = document.getElementById('exchange-old-product').options[document.getElementById('exchange-old-product').selectedIndex];
+                const newOption = document.getElementById('exchange-new-product').options[document.getElementById('exchange-new-product').selectedIndex];
+                const oldName = oldOption.dataset.name || '';
+                const newName = newOption.dataset.name || '';
+                const newStock = parseInt(newOption.dataset.stock) || 0;
+                
+                if (soluong > newStock) {
+                    showToast(`Sản phẩm mới chỉ còn ${newStock} sản phẩm trong kho`, 'error');
+                    return;
+                }
+                
+                // Xác nhận trước khi đổi
+                const confirmMsg = `Xác nhận đổi hàng?\n\n` +
+                    `Sản phẩm cũ: ${oldName}\n` +
+                    `Sản phẩm mới: ${newName}\n` +
+                    `Số lượng: ${soluong} sản phẩm\n\n` +
+                    `Hệ thống sẽ:\n` +
+                    `- Trả ${soluong} sản phẩm cũ vào kho\n` +
+                    `- Lấy ${soluong} sản phẩm mới từ kho\n` +
+                    `- Cập nhật hóa đơn`;
+                
+                if (!confirm(confirmMsg)) {
+                    return;
+                }
+                
+                showToast('Đang xử lý đổi hàng...', 'info');
+                
                 const exchangeRes = await fetch(`${API_BASE}/hoadon/${idHD}/doi-hang`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -3229,10 +3733,10 @@
                 const exchangeResult = await exchangeRes.json();
                 
                 if (exchangeResult.success) {
-                    showToast('Đổi hàng thành công', 'success');
+                    showToast('Đổi hàng thành công! Hóa đơn và số lượng kho đã được cập nhật.', 'success');
                     closeExchangeProductModal();
                     await loadOrders();
-                    await loadProducts();
+                    await loadProducts(); // Reload sản phẩm để cập nhật số lượng trong kho
                 } else {
                     showToast(exchangeResult.message || 'Lỗi đổi hàng', 'error');
                 }
