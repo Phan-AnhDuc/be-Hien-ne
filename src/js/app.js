@@ -1,5 +1,5 @@
 // Logic chính (load page, CRUD, UI)
-let currentPage = 'phongban';
+let currentPage = 'vitri';
 let currentData = null;
 let editingId = null;
 

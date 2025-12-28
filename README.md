@@ -1,266 +1,148 @@
 CREATE DATABASE HeThongQuanLyCuaHang_FMSTYLE;
 GO
-
 USE HeThongQuanLyCuaHang_FMSTYLE;
 GO
 
 -- =============================================
--- BẢNG CƠ BẢN
+-- 1. BẢNG DANH MỤC GỐC
 -- =============================================
 
--- Bảng LỊCH SỬ THEO DÕI NHÂN VIÊN
-CREATE TABLE LICHSUTHEODOINV(
-    maLS nvarchar(10) NOT NULL,
-    thang tinyint CHECK (thang BETWEEN 1 AND 12),
-    nam smallint CHECK (nam BETWEEN 1900 AND 2100), 
-    CONSTRAINT pkLS PRIMARY KEY (maLS)
-);
-
--- Bảng PHÒNG BAN
-CREATE TABLE PHONGBAN (
-    maPB nvarchar(10) NOT NULL,
-    tenPB nvarchar(40) NOT NULL,
-    CONSTRAINT pkPB PRIMARY KEY(maPB)
-);
-
--- Bảng VỊ TRÍ
 CREATE TABLE VITRI (
-    maVT nvarchar(10) NOT NULL,
-    tenVT nvarchar(40) NOT NULL,
-    CONSTRAINT pkVT PRIMARY KEY(maVT)
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    tenVT NVARCHAR(40) NOT NULL
 );
 
--- Bảng NHÀ CUNG CẤP
-CREATE TABLE NHACUNGCAP(
-    maNCC nvarchar(10) NOT NULL,
-    tenNCC nvarchar(50) NOT NULL,
-    diachi nvarchar(50),
-    sdt varchar(10),
-    email varchar(50),
-    CONSTRAINT pkNCC PRIMARY KEY(maNCC)
-);
-
--- Bảng PHÂN LOẠI KHÁCH HÀNG
 CREATE TABLE PHANLOAI_KH(
-    maPLKH nvarchar(10) NOT NULL,
-    tenPLKH nvarchar(40) NOT NULL,
-    tongchi money,
-    diemtichluy int CHECK(diemtichluy >= 0),
-    CONSTRAINT pkPLKH PRIMARY KEY(maPLKH)
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    maPLKH NVARCHAR(10) UNIQUE, -- 'LE', 'THANHVIEN', 'VIP'
+    tenPLKH NVARCHAR(40) NOT NULL,
+    nguongChiMin MONEY DEFAULT 0
 );
 
--- Bảng KHÁCH HÀNG
-CREATE TABLE KHACHHANG(
-    maKH nvarchar(10) NOT NULL,
-    tenKH nvarchar(40) NOT NULL,
-    maPLKH nvarchar(10) NOT NULL,
-    diachi nvarchar(50) NULL,
-    sdt varchar(10) NULL,
-    CONSTRAINT pkKH PRIMARY KEY(maKH),
-    CONSTRAINT fkKH_PLKH FOREIGN KEY (maPLKH)
-        REFERENCES PHANLOAI_KH(maPLKH)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE
+CREATE TABLE PHANLOAI_SANPHAM(
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    maPLSP NVARCHAR(10) UNIQUE, -- 'NAM', 'NU', 'PK'
+    tenPLSP NVARCHAR(40) NOT NULL
 );
 
--- Bảng NHÂN VIÊN
+CREATE TABLE KHUYENMAI(
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    maKM NVARCHAR(20) UNIQUE,
+    tenKM NVARCHAR(100),
+    phantramGiam INT CHECK(phantramGiam BETWEEN 0 AND 100),
+    ngayBD DATE,
+    ngayKT DATE,
+    trangthai AS (CASE WHEN GETDATE() BETWEEN ngayBD AND ngayKT THEN 1 ELSE 0 END)
+);
+
+-- =============================================
+-- 2. NHÂN VIÊN & TÀI KHOẢN
+-- =============================================
+
 CREATE TABLE NHANVIEN(
-    maNV nvarchar(10) NOT NULL,
-    tenNV nvarchar(40) NOT NULL,
-    diachi nvarchar(50),
-    sdt varchar(10),
-    gioitinh bit,
-    luong decimal(18,2) CHECK(luong >= 0),
-    namsinh int CHECK(namsinh BETWEEN 1900 AND 2100),
-    ngaylamviec date,
-    maPB nvarchar(10) NOT NULL,
-    maVT nvarchar(10) NOT NULL,
-    CONSTRAINT pkNV PRIMARY KEY(maNV),
-    CONSTRAINT fkNHANVIEN_VT FOREIGN KEY(maVT)
-        REFERENCES VITRI(maVT)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
-    CONSTRAINT fkNHANVIEN_PB FOREIGN KEY(maPB)
-        REFERENCES PHONGBAN(maPB)
-        ON DELETE CASCADE
+    id INT IDENTITY(1,1) PRIMARY KEY, -- Dùng ID này làm Khóa chính để liên kết
+    maNV AS ('NV' + RIGHT('000' + CAST(id AS VARCHAR(5)), 5)) PERSISTED, 
+    tenNV NVARCHAR(40) NOT NULL,
+    gioitinh NVARCHAR(3) CHECK(gioitinh IN (N'Nam', N'Nữ')), 
+    sdt VARCHAR(10),
+    idVT INT NOT NULL,
+    trangthai BIT DEFAULT 1,
+    CONSTRAINT fk_NV_VT FOREIGN KEY(idVT) REFERENCES VITRI(id)
+);
+
+CREATE TABLE USERS (
+    userId INT IDENTITY(1,1) PRIMARY KEY,
+    username NVARCHAR(50) NOT NULL UNIQUE,         -- Tên đăng nhập
+    passwordHash VARCHAR(64) NOT NULL,            -- Mật khẩu mã hóa SHA2_256
+    role NVARCHAR(20) NOT NULL CHECK (role IN ('admin', 'user', 'seller', 'warehouse')), 
+    idNV INT NULL,                                -- FK trỏ đến id (INT) của NHANVIEN
+    trangthai BIT DEFAULT 1,                       -- 1: Hoạt động, 0: Khóa
+    ngaytao DATETIME DEFAULT GETDATE(),
+
+    CONSTRAINT fk_USERS_NV FOREIGN KEY (idNV)
+        REFERENCES NHANVIEN(id)                   -- Ràng buộc với cột id (INT)
+        ON DELETE SET NULL
         ON UPDATE CASCADE
 );
 
--- Bảng PHIẾU THEO DÕI NHÂN VIÊN
-CREATE TABLE PHIEUTHEODOINV (
-    maLS nvarchar(10) NOT NULL,
-    maNV nvarchar(10) NOT NULL,
-    ngaylam date NULL,
-    ngaynghi date NULL,
-    tongngaylam int NULL CHECK(tongngaylam >= 0),
-    tongngaynghi int NULL CHECK(tongngaynghi >= 0),
-    ngaytangca date NULL,
-    CONSTRAINT pk_PTDNV PRIMARY KEY(maLS, maNV),
-    CONSTRAINT fk_PT_maLS FOREIGN KEY (maLS)
-        REFERENCES LICHSUTHEODOINV(maLS)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
-    CONSTRAINT fk_PT_maNV FOREIGN KEY (maNV)
-        REFERENCES NHANVIEN(maNV)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE
+-- =============================================
+-- 3. KHÁCH HÀNG & HÀNG HÓA
+-- =============================================
+
+CREATE TABLE KHACHHANG(
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    maKH AS ('KH' + RIGHT('000' + CAST(id AS VARCHAR(5)), 5)) PERSISTED,
+    tenKH NVARCHAR(40) NOT NULL,
+    sdt VARCHAR(10) UNIQUE,
+    diachi NVARCHAR(100),
+    idPLKH INT NOT NULL,
+    diemtichluy INT DEFAULT 0,
+    tongchi MONEY DEFAULT 0,
+    CONSTRAINT fk_KH_PLKH FOREIGN KEY (idPLKH) REFERENCES PHANLOAI_KH(id)
 );
 
--- Bảng HÀNG HÓA
 CREATE TABLE HANGHOA(
-    maHang nvarchar(10) NOT NULL,
-    loaihang nvarchar(40) NOT NULL,
-    soluong int NOT NULL CHECK(soluong >= 0),
-    ngaynhaphang date,
-    donvi nvarchar(20),
-    maNCC nvarchar(10) NOT NULL,
-    gianhapvao decimal(18,2) NOT NULL CHECK(gianhapvao >= 0),
-    giabanra decimal(18,2) NOT NULL CHECK(giabanra >= 0),
-    CONSTRAINT pkHH PRIMARY KEY(maHang),
-    CONSTRAINT fkHH_NCC FOREIGN KEY(maNCC)
-        REFERENCES NHACUNGCAP(maNCC)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE
-);
-
--- Bảng PHIẾU NHẬP
-CREATE TABLE PHIEUNHAP(
-    maPN nvarchar(10) NOT NULL,
-    maNCC nvarchar(10) NOT NULL,
-    ngaynhap date NULL,
-    maNV nvarchar(10) NOT NULL,
-    CONSTRAINT pkPN PRIMARY KEY (maPN),
-    CONSTRAINT fkPHIEUNHAP_NV FOREIGN KEY (maNV)
-        REFERENCES NHANVIEN(maNV)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
-    CONSTRAINT fkPHIEUNHAP_NCC FOREIGN KEY (maNCC)
-        REFERENCES NHACUNGCAP(maNCC)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE
-);
-
--- Bảng CHI TIẾT PHIẾU NHẬP
-CREATE TABLE CHITIETPHIEUNHAP(
-    maPN nvarchar(10) NOT NULL,
-    maHang nvarchar(10) NOT NULL,
-    soluongnhap int CHECK(soluongnhap >= 0),
-    CONSTRAINT pk_CTPN PRIMARY KEY (maPN, maHang),
-    CONSTRAINT fkCT_PN FOREIGN KEY(maPN)
-        REFERENCES PHIEUNHAP(maPN)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
-    CONSTRAINT fkCT_HH FOREIGN KEY(maHang)
-        REFERENCES HANGHOA(maHang)
-        ON DELETE NO ACTION
-        ON UPDATE NO ACTION
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    maHang AS ('SP' + RIGHT('000' + CAST(id AS VARCHAR(5)), 5)) PERSISTED,
+    tenHang NVARCHAR(100) NOT NULL,
+    idPLSP INT NOT NULL,
+    soluong INT DEFAULT 0 CHECK(soluong >= 0),
+    gianhap MONEY,
+    giaban MONEY,
+    tonKhoToiThieu INT DEFAULT 10,
+    ngayNhapCuoi DATE DEFAULT GETDATE(),
+    CONSTRAINT fk_HH_PLSP FOREIGN KEY(idPLSP) REFERENCES PHANLOAI_SANPHAM(id)
 );
 
 -- =============================================
--- BẢNG MÃ GIẢM GIÁ (MỚI)
+-- 4. HÓA ĐƠN & PHIẾU NHẬP
 -- =============================================
 
--- Bảng MÃ GIẢM GIÁ
-CREATE TABLE MAGIAMGIA(
-    maMGG nvarchar(10) NOT NULL,
-    code nvarchar(20) NOT NULL UNIQUE,
-    phantramgiam int NOT NULL CHECK(phantramgiam >= 0 AND phantramgiam <= 100),
-    ngaybatdau date NULL,
-    ngayketthuc date NULL,
-    trangthai bit DEFAULT 1, -- 1: Còn hiệu lực, 0: Hết hiệu lực
-    soluongsudung int DEFAULT 0 CHECK(soluongsudung >= 0),
-    gioihan int NULL CHECK(gioihan >= 0), -- Giới hạn số lần sử dụng (NULL = không giới hạn)
-    mota nvarchar(200) NULL,
-    CONSTRAINT pk_MGG PRIMARY KEY(maMGG)
-);
-
--- =============================================
--- BẢNG HÓA ĐƠN (CẬP NHẬT)
--- =============================================
-
--- Bảng HÓA ĐƠN (có thêm mã giảm giá và khách hàng)
 CREATE TABLE HOADON(
-    maHD nvarchar(10) NOT NULL,
-    maNV nvarchar(10) NOT NULL,
-    maKH nvarchar(10) NULL, -- Mã khách hàng
-    ngaylap date NOT NULL,
-    tongtien decimal(18,2) CHECK(tongtien >= 0),
-    maMGG nvarchar(10) NULL, -- Mã giảm giá áp dụng
-    tiengiamgia decimal(18,2) DEFAULT 0 CHECK(tiengiamgia >= 0), -- Số tiền được giảm
-    CONSTRAINT pkHD PRIMARY KEY (maHD),
-    CONSTRAINT fkHD_NV FOREIGN KEY(maNV)
-        REFERENCES NHANVIEN(maNV)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
-    CONSTRAINT fkHD_KH FOREIGN KEY(maKH)
-        REFERENCES KHACHHANG(maKH)
-        ON DELETE SET NULL
-        ON UPDATE CASCADE,
-    CONSTRAINT fk_HD_MGG FOREIGN KEY(maMGG)
-        REFERENCES MAGIAMGIA(maMGG)
-        ON DELETE SET NULL
-        ON UPDATE CASCADE
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    maHD AS ('HD' + RIGHT('000' + CAST(id AS VARCHAR(5)), 5)) PERSISTED,
+    ngayLap DATETIME DEFAULT GETDATE(),
+    idNV INT NOT NULL, -- Liên kết id nhân viên
+    idKH INT NOT NULL, -- Liên kết id khách hàng
+    idKM INT NULL,     -- Liên kết id khuyến mãi
+    tongTien MONEY DEFAULT 0,
+    loaiGiaoDich NVARCHAR(20) DEFAULT N'Bán hàng',
+    CONSTRAINT fk_HD_NV FOREIGN KEY(idNV) REFERENCES NHANVIEN(id),
+    CONSTRAINT fk_HD_KH FOREIGN KEY(idKH) REFERENCES KHACHHANG(id),
+    CONSTRAINT fk_HD_KM FOREIGN KEY(idKM) REFERENCES KHUYENMAI(id)
 );
 
--- Bảng CHI TIẾT HÓA ĐƠN
 CREATE TABLE CHITIET_HD(
-    maHD nvarchar(10) NOT NULL,
-    maHang nvarchar(10) NOT NULL,
-    soluong int CHECK(soluong >= 0),
-    dongia decimal(18,2) CHECK(dongia >= 0),
-    chietkhau int CHECK(chietkhau >= 0),
-    tongtien decimal(18,2) CHECK(tongtien >= 0),
-    CONSTRAINT pk_CTHD PRIMARY KEY (maHD, maHang),
-    CONSTRAINT fkCTHD_HD FOREIGN KEY(maHD)
-        REFERENCES HOADON(maHD)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
-    CONSTRAINT fkCTHD_HH FOREIGN KEY(maHang)
-        REFERENCES HANGHOA(maHang)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE
+    idHD INT NOT NULL,
+    idHang INT NOT NULL,
+    soluong INT NOT NULL,
+    dongia MONEY,
+    thanhTien AS (soluong * dongia) PERSISTED,
+    PRIMARY KEY (idHD, idHang),
+    CONSTRAINT fk_CTHD_HD FOREIGN KEY(idHD) REFERENCES HOADON(id),
+    CONSTRAINT fk_CTHD_HH FOREIGN KEY(idHang) REFERENCES HANGHOA(id)
 );
 
+GO
 -- =============================================
--- BẢNG LỊCH SỬ SỬ DỤNG MÃ GIẢM GIÁ (MỚI)
--- =============================================
-
--- Bảng LỊCH SỬ SỬ DỤNG MÃ GIẢM GIÁ
-CREATE TABLE LICHSU_SUDUNG_MGG(
-    maLSSD nvarchar(10) NOT NULL,
-    maMGG nvarchar(10) NOT NULL,
-    maHD nvarchar(10) NOT NULL,
-    ngaysudung date NOT NULL DEFAULT GETDATE(),
-    sotiengiamgia decimal(18,2) CHECK(sotiengiamgia >= 0),
-    CONSTRAINT pk_LSSD_MGG PRIMARY KEY(maLSSD),
-    CONSTRAINT fk_LSSD_MGG FOREIGN KEY(maMGG)
-        REFERENCES MAGIAMGIA(maMGG)
-        ON DELETE NO ACTION
-        ON UPDATE NO ACTION,
-    CONSTRAINT fk_LSSD_HD FOREIGN KEY(maHD)
-        REFERENCES HOADON(maHD)
-        ON DELETE NO ACTION
-        ON UPDATE NO ACTION
-);
-
--- =============================================
--- HƯỚNG DẪN CÀI ĐẶT FONT CHO XUẤT PDF
+-- 5. TRIGGER TỰ ĐỘNG CẬP NHẬT KHO
 -- =============================================
 
-Để xuất PDF tiếng Việt không bị lỗi font, bạn cần cài đặt font hỗ trợ tiếng Việt:
+CREATE OR ALTER TRIGGER trg_CapNhatKhoSauBanHang
+ON CHITIET_HD
+AFTER INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- Trừ kho
+    UPDATE HANGHOA SET soluong = HANGHOA.soluong - i.soluong
+    FROM HANGHOA JOIN inserted i ON HANGHOA.id = i.idHang;
 
-1. Tự động tải font (Khuyến nghị):
-   - Chạy lệnh: node download-fonts.js
-   - Script sẽ tự động tải font Noto Sans vào thư mục ./fonts/
-
-2. Thủ công:
-   - Tải font Noto Sans từ: https://fonts.google.com/noto/specimen/Noto+Sans
-   - Tạo thư mục ./fonts/ trong thư mục dự án
-   - Đặt các file font sau vào thư mục fonts/:
-     * NotoSans-Regular.ttf
-     * NotoSans-Bold.ttf
-
-3. Hệ thống sẽ tự động sử dụng font hệ thống Windows (Arial, Tahoma) nếu không tìm thấy font trong thư mục ./fonts/
-
-Lưu ý: Excel export hoạt động tốt với tiếng Việt vì ExcelJS tự động hỗ trợ UTF-8.
-PDF export cần font hỗ trợ Unicode để hiển thị đúng tiếng Việt.
+    -- Tích điểm cho khách
+    UPDATE KHACHHANG SET tongchi = tongchi + i.thanhTien,
+                         diemtichluy = diemtichluy + (CAST(i.thanhTien AS INT) / 100000)
+    FROM KHACHHANG 
+    JOIN HOADON h ON KHACHHANG.id = h.idKH
+    JOIN inserted i ON h.id = i.idHD;
+END;
+GO

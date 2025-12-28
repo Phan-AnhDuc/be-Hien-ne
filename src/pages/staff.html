@@ -1101,7 +1101,7 @@
                     fetch(`${API_BASE}/hanghoa`),
                     fetch(`${API_BASE}/khachhang`),
                     fetch(`${API_BASE}/nhanvien`),
-                    fetch(`${API_BASE}/magiamgia`),
+                    fetch(`${API_BASE}/khuyenmai`), // Schema mới: KHUYENMAI thay vì MAGIAMGIA
                     fetch(`${API_BASE}/phanloaikh`)
                 ]);
 
@@ -1116,12 +1116,16 @@
                 if (nhanvienData.success) nhanvienList = nhanvienData.data;
                 if (typesData.success) customerTypes = typesData.data;
                 
-                // Chỉ lấy mã giảm giá còn hiệu lực và chưa hết lượt sử dụng
+                // Chỉ lấy khuyến mãi còn hiệu lực
+                // Schema mới: KHUYENMAI có ngayBD, ngayKT, trangthai (computed)
                 if (discountData.success) {
                     const today = new Date().toISOString().split('T')[0];
                     discountList = discountData.data.filter(d => {
-                        if (!d.trangthai) return false;
-                        if (d.ngayketthuc && d.ngayketthuc < today) return false;
+                        // Hỗ trợ cả schema cũ và mới
+                        if (d.trangthai !== undefined && d.trangthai !== 1 && d.trangthai !== true) return false;
+                        const ngayKT = d.ngayKT || d.ngayketthuc;
+                        if (ngayKT && ngayKT < today) return false;
+                        // Schema mới không có gioihan/soluongsudung
                         if (d.gioihan && d.soluongsudung >= d.gioihan) return false;
                         return true;
                     });
@@ -1195,9 +1199,9 @@
 
                 if (ordersData.success) {
                     const today = new Date().toISOString().split('T')[0];
-                    const todayOrders = ordersData.data.filter(o => o.ngaylap && o.ngaylap.startsWith(today));
+                    const todayOrders = ordersData.data.filter(o => o.ngayLap && o.ngayLap.startsWith(today));
                     document.getElementById('stat-orders').textContent = todayOrders.length;
-                    const todayRevenue = todayOrders.reduce((sum, o) => sum + (parseFloat(o.tongtien) || 0), 0);
+                    const todayRevenue = todayOrders.reduce((sum, o) => sum + (parseFloat(o.tongTien) || 0), 0);
                     document.getElementById('stat-revenue').textContent = formatCurrency(todayRevenue);
                 }
 
@@ -1226,7 +1230,7 @@
                     <h4>⚠️ Cảnh Báo Hàng Tồn Kho Thấp (dưới 20)</h4>
                     ${lowStockItems.map(p => `
                         <div class="stock-warning-item">
-                            <span><strong>${p.loaihang}</strong> (${p.maHang})</span>
+                            <span><strong>${p.tenHang}</strong> (${p.maHang})</span>
                             <span class="badge badge-warning">Còn ${p.soluong} ${p.donvi || 'sp'}</span>
                         </div>
                     `).join('')}
@@ -1243,10 +1247,10 @@
 
             container.innerHTML = data.map(p => `
                 <div class="product-card">
-                    <div class="product-card-name">${p.loaihang}</div>
+                    <div class="product-card-name">${p.tenHang}</div>
                     <div class="product-card-code">${p.maHang}</div>
                     <span class="product-card-stock ${getStockClass(p.soluong)}">Còn ${p.soluong} ${p.donvi || 'sp'}</span>
-                    <div class="product-card-price">${formatCurrency(p.giabanra)}</div>
+                    <div class="product-card-price">${formatCurrency(p.giaban)}</div>
                 </div>
             `).join('');
         }
@@ -1313,11 +1317,11 @@
                         ${data.map(p => `
                             <tr>
                                 <td><strong>${p.maHang}</strong></td>
-                                <td>${p.loaihang}</td>
+                                <td>${p.tenHang}</td>
                                 <td>${p.soluong}</td>
                                 <td>${p.donvi || '-'}</td>
-                                <td>${formatCurrency(p.gianhapvao)}</td>
-                                <td><strong class="value-success">${formatCurrency(p.giabanra)}</strong></td>
+                                <td>${formatCurrency(p.gianhap)}</td>
+                                <td><strong class="value-success">${formatCurrency(p.giaban)}</strong></td>
                                 <td>
                                     <span class="badge ${getStockBadge(p.soluong)}">${getStockText(p.soluong)}</span>
                                 </td>
@@ -1341,7 +1345,7 @@
                         <h4 style="color: #e74c3c;">❌ Sản Phẩm Hết Hàng</h4>
                         ${outOfStock.map(p => `
                             <div class="stock-warning-item">
-                                <span><strong>${p.loaihang}</strong> (${p.maHang})</span>
+                                <span><strong>${p.tenHang}</strong> (${p.maHang})</span>
                                 <span class="badge badge-danger">Hết hàng</span>
                             </div>
                         `).join('')}
@@ -1355,7 +1359,7 @@
                         <h4>⚠️ Cảnh Báo Sắp Hết Hàng (dưới 20)</h4>
                         ${lowStockItems.map(p => `
                             <div class="stock-warning-item">
-                                <span><strong>${p.loaihang}</strong> (${p.maHang})</span>
+                                <span><strong>${p.tenHang}</strong> (${p.maHang})</span>
                                 <span class="badge badge-warning">Còn ${p.soluong} ${p.donvi || 'sp'}</span>
                             </div>
                         `).join('')}
@@ -1370,7 +1374,7 @@
             const keyword = document.getElementById('search-product').value.toLowerCase();
             const filtered = products.filter(p =>
                 p.maHang.toLowerCase().includes(keyword) ||
-                p.loaihang.toLowerCase().includes(keyword)
+                p.tenHang.toLowerCase().includes(keyword)
             );
             renderProductsTable(filtered);
         }
@@ -1423,12 +1427,12 @@
 
             container.innerHTML = data.map(p => `
                 <div class="product-card" onclick="${p.soluong > 0 ? `addToCart('${p.maHang}')` : ''}">
-                    <div class="product-card-name">${p.loaihang}</div>
+                    <div class="product-card-name">${p.tenHang}</div>
                     <div class="product-card-code">${p.maHang}</div>
                     <span class="product-card-stock ${getStockClass(p.soluong)}">
                         Còn ${p.soluong} ${p.donvi || 'sp'}
                     </span>
-                    <div class="product-card-price">${formatCurrency(p.giabanra)}</div>
+                    <div class="product-card-price">${formatCurrency(p.giaban)}</div>
                     <button class="product-card-btn" ${p.soluong <= 0 ? 'disabled' : ''} onclick="event.stopPropagation(); addToCart('${p.maHang}')">
                         ${p.soluong > 0 ? 'Thêm vào giỏ' : 'Hết hàng'}
                     </button>
@@ -1440,7 +1444,7 @@
             const keyword = document.getElementById('search-order-product').value.toLowerCase();
             const filtered = products.filter(p =>
                 p.maHang.toLowerCase().includes(keyword) ||
-                p.loaihang.toLowerCase().includes(keyword)
+                p.tenHang.toLowerCase().includes(keyword)
             );
             renderOrderProducts(filtered);
         }
@@ -1461,16 +1465,17 @@
                 existingItem.quantity++;
             } else {
                 cart.push({
+                    id: product.id, // Lưu id để dùng khi tạo hóa đơn
                     maHang: product.maHang,
-                    name: product.loaihang,
-                    price: product.giabanra,
+                    name: product.tenHang,
+                    price: product.giaban,
                     quantity: 1,
                     maxQty: product.soluong
                 });
             }
 
             renderCart();
-            showToast(`Đã thêm ${product.loaihang}`, 'success');
+            showToast(`Đã thêm ${product.tenHang}`, 'success');
         }
 
         function updateCartQty(maHang, delta) {
@@ -1522,17 +1527,17 @@
             `).join('');
 
             const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const discountAmount = appliedDiscount ? (subtotal * appliedDiscount.phantramgiam / 100) : 0;
+            const discountAmount = appliedDiscount ? (subtotal * (appliedDiscount.phantramGiam || appliedDiscount.phantramgiam || 0) / 100) : 0;
             
-            // Điểm tích lũy: 1000đ = 1 điểm
-            const pointsEarned = Math.floor((subtotal - discountAmount) / 1000);
-            
-            // Tính điểm có thể dùng
+            // Tính điểm có thể dùng (1 điểm = 1000đ)
             const customerPoints = selectedCustomer ? (selectedCustomer.diemtichluy || 0) : 0;
             const usePoints = document.getElementById('use-points-checkbox')?.checked || false;
             const pointsValue = usePoints ? Math.min(customerPoints * 1000, subtotal - discountAmount) : 0;
             
             const total = subtotal - discountAmount - pointsValue;
+            
+            // Điểm tích lũy: 100000đ = 1 điểm, tối thiểu 1 điểm
+            const pointsEarned = total > 0 ? Math.max(1, Math.floor(total / 100000)) : 0;
 
             summaryContainer.innerHTML = `
                 <div class="cart-summary">
@@ -1549,7 +1554,7 @@
                                 <div class="points-section">
                                     <label>
                                         <input type="checkbox" id="use-points-checkbox" onchange="renderCart()" ${usePoints ? 'checked' : ''}>
-                                        Sử dụng ${customerPoints} điểm (tương đương ${formatCurrency(customerPoints * 1000)})
+                                        Sử dụng ${customerPoints} điểm (1 điểm = 1.000đ, tối đa ${formatCurrency(customerPoints * 1000)})
                                     </label>
                                 </div>
                             ` : ''}
@@ -1577,7 +1582,7 @@
                         <label>Mã Giảm Giá</label>
                         ${appliedDiscount ? `
                             <div style="display: flex; align-items: center; justify-content: space-between; background: #e6fff5; padding: 10px; border-radius: 8px;">
-                                <span style="color: #00b894; font-weight: 600; font-size: 13px;">✓ ${appliedDiscount.code} (-${appliedDiscount.phantramgiam}%)</span>
+                                <span style="color: #00b894; font-weight: 600; font-size: 13px;">✓ ${appliedDiscount.maKM || appliedDiscount.code} (-${appliedDiscount.phantramGiam || appliedDiscount.phantramgiam}%)</span>
                                 <button onclick="removeDiscount()" style="background: none; border: none; color: #e74c3c; cursor: pointer;">✕</button>
                             </div>
                         ` : `
@@ -1585,7 +1590,7 @@
                                 <option value="">-- Không áp dụng --</option>
                                 ${discountList.map(d => `
                                     <option value="${d.code}">
-                                        ${d.code} - Giảm ${d.phantramgiam}% ${d.mota ? '(' + d.mota + ')' : ''} ${d.gioihan ? `[Còn ${d.gioihan - d.soluongsudung} lượt]` : ''}
+                                        ${d.maKM || d.code} - Giảm ${d.phantramGiam || d.phantramgiam}% ${d.tenKM || d.mota ? '(' + (d.tenKM || d.mota) + ')' : ''}
                                     </option>
                                 `).join('')}
                             </select>
@@ -1598,7 +1603,7 @@
                         <label>Nhân Viên Bán Hàng</label>
                         <select id="nhanvien-select">
                             <option value="">-- Chọn nhân viên --</option>
-                            ${nhanvienList.map(nv => `<option value="${nv.maNV}">${nv.tenNV} (${nv.maNV})</option>`).join('')}
+                            ${nhanvienList.map(nv => `<option value="${nv.id}">${nv.tenNV} (${nv.maNV})</option>`).join('')}
                         </select>
                     </div>
 
@@ -1625,7 +1630,7 @@
                     </div>
                     ${selectedCustomer ? `
                         <p style="font-size: 11px; color: #666; margin-top: 8px; text-align: center;">
-                            Tích lũy: +${pointsEarned} điểm
+                            Tích lũy: +${pointsEarned} điểm (100.000đ = 1 điểm, tối thiểu 1 điểm)
                         </p>
                     ` : ''}
                     
@@ -1655,7 +1660,7 @@
             if (discount) {
                 appliedDiscount = discount;
                 renderCart();
-                showToast(`Áp dụng mã giảm giá ${discount.phantramgiam}%`, 'success');
+                showToast(`Áp dụng khuyến mãi ${discount.phantramGiam || discount.phantramgiam}%`, 'success');
             }
         }
 
@@ -1707,7 +1712,7 @@
         }
 
         function selectCustomer(maKH) {
-            selectedCustomer = customers.find(c => c.maKH === maKH);
+            selectedCustomer = customers.find(c => c.maKH === maKH || c.id === parseInt(maKH));
             closeCustomerModal();
             renderCart();
             showToast(`Đã chọn khách hàng: ${selectedCustomer.tenKH}`, 'success');
@@ -1720,7 +1725,7 @@
         function openNewCustomerModal() {
             const typeSelect = document.getElementById('new-cust-type');
             typeSelect.innerHTML = customerTypes.map(t => 
-                `<option value="${t.maPLKH}">${t.tenPLKH}</option>`
+                `<option value="${t.id}">${t.tenPLKH}</option>`
             ).join('');
             
             document.getElementById('new-customer-modal').classList.add('active');
@@ -1735,10 +1740,10 @@
             event.preventDefault();
             
             // Không cần nhập mã KH, server tự động sinh
-            const data = {
+                const data = {
                 tenKH: document.getElementById('new-cust-name').value.trim(),
                 sdt: document.getElementById('new-cust-phone').value.trim(),
-                maPLKH: document.getElementById('new-cust-type').value, // Mặc định thành viên
+                idPLKH: document.getElementById('new-cust-type').value, // Dùng id thay vì maPLKH
                 diachi: document.getElementById('new-cust-address').value.trim()
             };
 
@@ -1782,16 +1787,23 @@
                 return;
             }
 
-            const maNV = document.getElementById('nhanvien-select').value;
-            if (!maNV) {
+            const selectedNVValue = document.getElementById('nhanvien-select').value;
+            if (!selectedNVValue) {
                 showToast('Vui lòng chọn nhân viên bán hàng', 'error');
                 return;
             }
 
             try {
+                // Tìm nhân viên được chọn để lấy id
+                const selectedNV = nhanvienList.find(nv => nv.maNV === selectedNVValue || nv.id === parseInt(selectedNVValue));
+                if (!selectedNV || !selectedNV.id) {
+                    showToast('Không tìm thấy nhân viên', 'error');
+                    return;
+                }
+
                 // Server tự động sinh mã HD
                 const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                const discountAmount = appliedDiscount ? (subtotal * appliedDiscount.phantramgiam / 100) : 0;
+                const discountAmount = appliedDiscount ? (subtotal * (appliedDiscount.phantramGiam || appliedDiscount.phantramgiam || 0) / 100) : 0;
                 
                 const usePoints = document.getElementById('use-points-checkbox')?.checked || false;
                 const customerPoints = selectedCustomer ? (selectedCustomer.diemtichluy || 0) : 0;
@@ -1799,14 +1811,16 @@
                 const pointsUsed = usePoints ? Math.floor(pointsValue / 1000) : 0;
                 
                 const total = subtotal - discountAmount - pointsValue;
-                const pointsEarned = Math.floor(total / 1000);
+                
+                // Điểm tích lũy: 100000đ = 1 điểm, tối thiểu 1 điểm
+                const pointsEarned = total > 0 ? Math.max(1, Math.floor(total / 100000)) : 0;
 
                 // Create invoice (server tự động sinh maHD)
+                // Schema mới sử dụng id thay vì mã cho foreign keys
                 const invoiceData = {
-                    maNV: maNV,
-                    maKH: selectedCustomer ? selectedCustomer.maKH : null,
-                    ngaylap: new Date().toISOString().split('T')[0],
-                    codeMGG: appliedDiscount ? appliedDiscount.code : null
+                    idNV: selectedNV.id, // Dùng id
+                    idKH: selectedCustomer ? (selectedCustomer.id || null) : null, // Dùng id
+                    idKM: appliedDiscount ? (appliedDiscount.id || null) : null // Dùng id
                 };
 
                 const invoiceRes = await fetch(`${API_BASE}/hoadon`, {
@@ -1822,14 +1836,22 @@
                     return;
                 }
                 
-                // Lấy mã HD từ server
+                // Lấy id và mã HD từ server
+                const idHD = invoiceResult.data.id;
                 const maHD = invoiceResult.data.maHD;
 
                 // Add invoice details (server tự động trừ hàng trong kho)
+                // Tìm product để lấy id
                 for (const item of cart) {
+                    const product = products.find(p => p.maHang === item.maHang);
+                    if (!product || !product.id) {
+                        showToast(`Không tìm thấy sản phẩm ${item.name}`, 'error');
+                        continue;
+                    }
+                    
                     const detailData = {
-                        maHD: maHD,
-                        maHang: item.maHang,
+                        idHD: idHD, // Dùng id
+                        idHang: product.id, // Dùng id
                         soluong: item.quantity,
                         dongia: item.price
                     };
@@ -1844,18 +1866,24 @@
                     if (!detailResult.success) {
                         showToast(`Lỗi thêm sản phẩm ${item.name}: ${detailResult.message}`, 'error');
                         // Rollback: xóa hóa đơn nếu có lỗi
-                        await fetch(`${API_BASE}/hoadon/${maHD}`, { method: 'DELETE' });
+                        await fetch(`${API_BASE}/hoadon/${idHD}`, { method: 'DELETE' });
                         return;
                     }
                 }
 
                 // Update customer points if applicable
-                if (selectedCustomer) {
+                if (selectedCustomer && selectedCustomer.id) {
                     const newPoints = customerPoints - pointsUsed + pointsEarned;
-                    await fetch(`${API_BASE}/khachhang/${selectedCustomer.maKH}`, {
+                    await fetch(`${API_BASE}/khachhang/${selectedCustomer.id}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ diemtichluy: newPoints })
+                        body: JSON.stringify({ 
+                            tenKH: selectedCustomer.tenKH,
+                            idPLKH: selectedCustomer.idPLKH,
+                            diemtichluy: newPoints,
+                            sdt: selectedCustomer.sdt,
+                            diachi: selectedCustomer.diachi
+                        })
                     });
 
                     // Also update phanloaikh if needed (tổng chi)
@@ -1865,12 +1893,40 @@
                 // Success
                 lastInvoiceId = maHD;
 
+                // Tính toán lại để hiển thị đầy đủ
+                const subtotalDisplay = subtotal;
+                const discountCodeDisplay = discountAmount;
+                const discountPointsDisplay = pointsValue;
+                const finalTotalDisplay = total;
+
                 document.getElementById('success-message').innerHTML = `
                     <strong>Mã hóa đơn: ${maHD}</strong><br>
-                    Nhân viên: ${nhanvienList.find(n => n.maNV === maNV)?.tenNV || maNV}<br>
+                    Nhân viên: ${selectedNV.tenNV || selectedNVValue}<br>
                     ${selectedCustomer ? `Khách hàng: ${selectedCustomer.tenKH}<br>` : ''}
-                    Tổng tiền: <strong>${formatCurrency(total)}</strong>
-                    ${selectedCustomer ? `<br>Điểm tích lũy: +${pointsEarned} điểm` : ''}
+                    <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
+                    <div style="text-align: left; font-size: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span>Tổng tiền:</span>
+                            <strong>${formatCurrency(subtotalDisplay)}</strong>
+                        </div>
+                        ${discountCodeDisplay > 0 ? `
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #dc2626;">
+                            <span>Giảm giá (Mã):</span>
+                            <strong>-${formatCurrency(discountCodeDisplay)}</strong>
+                        </div>
+                        ` : ''}
+                        ${discountPointsDisplay > 0 ? `
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #059669;">
+                            <span>Giảm giá (Điểm):</span>
+                            <strong>-${formatCurrency(discountPointsDisplay)}</strong>
+                        </div>
+                        ` : ''}
+                        <div style="display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 2px solid #1a1a2e; font-size: 14px;">
+                            <strong>Thành tiền:</strong>
+                            <strong style="color: #00b894; font-size: 16px;">${formatCurrency(finalTotalDisplay)}</strong>
+                        </div>
+                        ${selectedCustomer ? `<div style="margin-top: 10px; color: #666; font-size: 11px;">Điểm tích lũy: +${pointsEarned} điểm (100.000đ = 1 điểm, tối thiểu 1 điểm)</div>` : ''}
+                    </div>
                 `;
                 document.getElementById('success-modal').classList.add('active');
 
@@ -1904,16 +1960,31 @@
 
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `HoaDon_${lastInvoiceId}.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
+                
+                // Mở PDF trong tab mới để có thể in trực tiếp
+                const printWindow = window.open(url, '_blank');
+                
+                // Nếu không mở được (bị chặn popup), tải xuống
+                if (!printWindow) {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `HoaDon_${lastInvoiceId}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    showToast('Đã tải hóa đơn. Vui lòng mở file để in.', 'info');
+                } else {
+                    // Đợi PDF load xong rồi tự động mở dialog in
+                    printWindow.onload = function() {
+                        setTimeout(() => {
+                            printWindow.print();
+                        }, 500);
+                    };
+                    showToast('Đang mở hóa đơn để in...', 'success');
+                }
 
                 closeSuccessModal();
-                showToast('Đã tải hóa đơn', 'success');
             } catch (error) {
                 showToast('Lỗi: ' + error.message, 'error');
             }
@@ -1959,6 +2030,34 @@
 
                 if (result.success) {
                     ordersList = result.data;
+                    
+                    // Fetch chi tiết hóa đơn để tính giảm giá từ điểm tích lũy
+                    for (let order of ordersList) {
+                        try {
+                            // Dùng id thay vì maHD
+                            const idHD = order.id || order.maHD;
+                            const detailRes = await fetch(`${API_BASE}/chitiethd/${idHD}`);
+                            const detailData = await detailRes.json();
+                            
+                            if (detailData.success && detailData.data.length > 0) {
+                                // Tính tổng tiền gốc từ chi tiết
+                                const subtotal = detailData.data.reduce((sum, item) => sum + (parseFloat(item.thanhTien) || 0), 0);
+                                const discountFromCode = parseFloat(order.tiengiamgia) || 0;
+                                const finalTotal = parseFloat(order.tongTien) || 0;
+                                
+                                // Giảm giá từ điểm tích lũy = subtotal - discountFromCode - finalTotal
+                                order.pointsDiscount = Math.max(0, subtotal - discountFromCode - finalTotal);
+                                order.subtotal = subtotal;
+                            } else {
+                                order.pointsDiscount = 0;
+                                order.subtotal = parseFloat(order.tongTien) || 0;
+                            }
+                        } catch (err) {
+                            order.pointsDiscount = 0;
+                            order.subtotal = parseFloat(order.tongtien) || 0;
+                        }
+                    }
+                    
                     renderOrdersTable(ordersList);
                 }
             } catch (error) {
@@ -1983,7 +2082,9 @@
                             <th>Khách Hàng</th>
                             <th>Nhân Viên</th>
                             <th>Tổng Tiền</th>
-                            <th>Giảm Giá</th>
+                            <th>Giảm Giá (Mã)</th>
+                            <th>Giảm Giá (Điểm)</th>
+                            <th>Thành Tiền</th>
                             <th>Thao Tác</th>
                         </tr>
                     </thead>
@@ -1991,14 +2092,18 @@
                         ${data.map(o => {
                             const nv = nhanvienList.find(n => n.maNV === o.maNV);
                             const kh = customers.find(c => c.maKH === o.maKH);
+                            const pointsDiscount = o.pointsDiscount || 0;
+                            const finalTotal = parseFloat(o.tongTien) || 0;
                             return `
                                 <tr>
                                     <td><strong>${o.maHD}</strong></td>
-                                    <td>${formatDate(o.ngaylap)}</td>
+                                    <td>${formatDate(o.ngayLap)}</td>
                                     <td>${kh ? kh.tenKH : (o.maKH || 'Khách lẻ')}</td>
                                     <td>${nv ? nv.tenNV : o.maNV}</td>
-                                    <td><strong class="value-success">${formatCurrency(o.tongtien)}</strong></td>
+                                    <td>${o.subtotal ? formatCurrency(o.subtotal) : formatCurrency(finalTotal)}</td>
                                     <td>${o.tiengiamgia ? formatCurrency(o.tiengiamgia) : '-'}</td>
+                                    <td>${pointsDiscount > 0 ? `<span class="value-success">${formatCurrency(pointsDiscount)}</span>` : '-'}</td>
+                                    <td><strong class="value-success">${formatCurrency(finalTotal)}</strong></td>
                                     <td>
                                         <button class="btn btn-sm btn-secondary" onclick="exportPDF('${o.maHD}')">PDF</button>
                                         <button class="btn btn-sm btn-success" onclick="exportExcel('${o.maHD}')">Excel</button>
@@ -2029,7 +2134,10 @@
 
         async function exportPDF(maHD) {
             try {
-                const response = await fetch(`${API_BASE}/hoadon/${maHD}/pdf`);
+                // Tìm hóa đơn để lấy id
+                const order = ordersList.find(o => o.maHD === maHD);
+                const idHD = order ? (order.id || maHD) : maHD;
+                const response = await fetch(`${API_BASE}/hoadon/${idHD}/pdf`);
                 if (!response.ok) {
                     showToast('Lỗi xuất PDF', 'error');
                     return;
@@ -2053,7 +2161,10 @@
 
         async function exportExcel(maHD) {
             try {
-                const response = await fetch(`${API_BASE}/hoadon/${maHD}/export?format=excel`);
+                // Tìm hóa đơn để lấy id
+                const order = ordersList.find(o => o.maHD === maHD);
+                const idHD = order ? (order.id || maHD) : maHD;
+                const response = await fetch(`${API_BASE}/hoadon/${idHD}/export?format=excel`);
                 if (!response.ok) {
                     showToast('Lỗi xuất Excel', 'error');
                     return;
@@ -2134,12 +2245,12 @@
                     </thead>
                     <tbody>
                         ${data.map(c => {
-                            const type = customerTypes.find(t => t.maPLKH === c.maPLKH);
+                            const type = customerTypes.find(t => t.id === c.idPLKH || t.maPLKH === c.maPLKH);
                             return `
                                 <tr>
                                     <td><strong>${c.maKH}</strong></td>
                                     <td>${c.tenKH}</td>
-                                    <td><span class="badge badge-info">${type ? type.tenPLKH : c.maPLKH || '-'}</span></td>
+                                    <td><span class="badge badge-info">${c.tenPLKH || (type ? type.tenPLKH : c.maPLKH || '-')}</span></td>
                                     <td>${c.diachi || '-'}</td>
                                     <td>${c.sdt || '-'}</td>
                                     <td><strong class="value-success">${c.diemtichluy || 0} điểm</strong></td>
@@ -2202,8 +2313,8 @@
 
                 if (result.success) {
                     const orders = result.data.filter(o => {
-                        if (!o.ngaylap) return false;
-                        const date = new Date(o.ngaylap);
+                        if (!o.ngayLap) return false;
+                        const date = new Date(o.ngayLap);
                         return date.getMonth() + 1 === parseInt(month) && date.getFullYear() === parseInt(year);
                     });
 
@@ -2220,13 +2331,13 @@
                             };
                         }
                         employeeStats[o.maNV].totalOrders++;
-                        employeeStats[o.maNV].totalRevenue += parseFloat(o.tongtien) || 0;
+                        employeeStats[o.maNV].totalRevenue += parseFloat(o.tongTien) || 0;
                     });
 
                     const statsList = Object.values(employeeStats).sort((a, b) => b.totalRevenue - a.totalRevenue);
                     
                     // Summary
-                    const totalRevenue = orders.reduce((sum, o) => sum + (parseFloat(o.tongtien) || 0), 0);
+                    const totalRevenue = orders.reduce((sum, o) => sum + (parseFloat(o.tongTien) || 0), 0);
                     const totalOrders = orders.length;
                     const topEmployee = statsList[0];
 
