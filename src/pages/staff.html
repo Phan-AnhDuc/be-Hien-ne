@@ -1153,6 +1153,77 @@
         </div>
     </div>
 
+    <!-- New Product Modal -->
+    <div id="new-product-modal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3>➕ Thêm Hàng Hóa Mới</h3>
+                <button class="close-btn" onclick="closeNewProductModal()">×</button>
+            </div>
+            <form id="new-product-form" onsubmit="saveNewProduct(event)">
+                <div class="form-group">
+                    <label>Tên Hàng *</label>
+                    <input type="text" id="new-product-name" required placeholder="Nhập tên hàng hóa">
+                </div>
+                <div class="form-group">
+                    <label>Phân Loại Sản Phẩm *</label>
+                    <select id="new-product-type" required>
+                        <option value="">-- Chọn phân loại --</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Giá Nhập *</label>
+                        <input type="number" id="new-product-gianhap" required min="0" step="1000" placeholder="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Giá Bán *</label>
+                        <input type="number" id="new-product-giaban" required min="0" step="1000" placeholder="0">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Số Lượng Nhập</label>
+                        <input type="number" id="new-product-soluong" min="0" value="0" placeholder="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Tồn Kho Tối Thiểu</label>
+                        <input type="number" id="new-product-tonkho" min="0" value="10" placeholder="10">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeNewProductModal()">Hủy</button>
+                    <button type="submit" class="btn btn-success">Thêm Hàng Hóa</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Phiếu Nhập Detail Section -->
+    <div id="phieunhap-detail-section" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; overflow-y: auto; padding: 20px;">
+        <div style="max-width: 1000px; margin: 0 auto; background: white; border-radius: 12px; padding: 0; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0; padding: 20px 25px; border-bottom: 2px solid #e0e0e0; background: #f8f9fa; border-radius: 12px 12px 0 0;">
+                <h2 style="margin: 0; color: #1a2b48; font-size: 20px; font-weight: 700;">📋 Chi Tiết Phiếu Nhập Hàng</h2>
+                <button onclick="closePhieuNhapDetailSection()" style="background: #dc2626; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s;" onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">✕ Đóng</button>
+            </div>
+            <div id="phieunhap-detail-body" style="max-height: 75vh; overflow-y: auto;"></div>
+            <div style="margin-top: 0; padding: 20px 25px; border-top: 2px solid #e0e0e0; display: flex; gap: 10px; justify-content: flex-end; background: #f8f9fa; border-radius: 0 0 12px 12px;">
+                <button class="btn btn-secondary" onclick="closePhieuNhapDetailSection()">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Phiếu Nhập Section -->
+    <div id="new-phieunhap-section" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; overflow-y: auto; padding: 20px;">
+        <div style="max-width: 1200px; margin: 0 auto; background: white; border-radius: 12px; padding: 0; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0; padding: 20px 25px; border-bottom: 2px solid #e0e0e0; background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-radius: 12px 12px 0 0;">
+                <h2 style="margin: 0; color: #e65100; font-size: 20px; font-weight: 700;">➕ Tạo Phiếu Nhập Hàng Mới</h2>
+                <button onclick="closeNewPhieuNhapSection()" style="background: #dc2626; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s;" onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">✕ Đóng</button>
+            </div>
+            <div id="new-phieunhap-body" style="max-height: 80vh; overflow-y: auto;"></div>
+        </div>
+    </div>
+
     <script>
         const API_BASE = 'http://localhost:3000/api';
         let currentPage = 'dashboard';
@@ -1166,6 +1237,8 @@
         let nhanvienList = [];
         let discountList = [];
         let currentUser = null;
+        let phanLoaiSanPhamList = []; // Danh sách phân loại sản phẩm
+        let currentUserNhanVien = null; // Thông tin nhân viên hiện tại (bao gồm vị trí)
 
         // Initialize
         window.onload = async function () {
@@ -1191,12 +1264,13 @@
         // Load initial data
         async function loadInitialData() {
             try {
-                const [productsRes, customersRes, nhanvienRes, discountRes, typesRes] = await Promise.all([
+                const [productsRes, customersRes, nhanvienRes, discountRes, typesRes, phanLoaiSPRes] = await Promise.all([
                     fetch(`${API_BASE}/hanghoa`),
                     fetch(`${API_BASE}/khachhang`),
                     fetch(`${API_BASE}/nhanvien`),
                     fetch(`${API_BASE}/khuyenmai`), // Schema mới: KHUYENMAI thay vì MAGIAMGIA
-                    fetch(`${API_BASE}/phanloaikh`)
+                    fetch(`${API_BASE}/phanloaikh`),
+                    fetch(`${API_BASE}/phanloaisanpham`)
                 ]);
 
                 const productsData = await productsRes.json();
@@ -1204,11 +1278,19 @@
                 const nhanvienData = await nhanvienRes.json();
                 const discountData = await discountRes.json();
                 const typesData = await typesRes.json();
+                const phanLoaiSPData = await phanLoaiSPRes.json();
 
                 if (productsData.success) products = productsData.data;
                 if (customersData.success) customers = customersData.data;
-                if (nhanvienData.success) nhanvienList = nhanvienData.data;
+                if (nhanvienData.success) {
+                    nhanvienList = nhanvienData.data;
+                    // Tìm nhân viên hiện tại dựa vào idNV từ currentUser
+                    if (currentUser && currentUser.idNV) {
+                        currentUserNhanVien = nhanvienData.data.find(nv => nv.id === currentUser.idNV);
+                    }
+                }
                 if (typesData.success) customerTypes = typesData.data;
+                if (phanLoaiSPData.success) phanLoaiSanPhamList = phanLoaiSPData.data;
                 
                 // Chỉ lấy khuyến mãi còn hiệu lực
                 // Schema mới: KHUYENMAI có ngayBD, ngayKT, trangthai (computed)
@@ -1244,6 +1326,7 @@
                 case 'customers': renderCustomers(); break;
                 case 'statistics': renderStatistics(); break;
                 case 'phieunhap': renderPhieuNhap(); break;
+                case 'create-phieunhap': renderCreatePhieuNhap(); break;
             }
         }
 
@@ -1402,7 +1485,6 @@
                             <th>Mã Hàng</th>
                             <th>Tên Sản Phẩm</th>
                             <th>Số Lượng</th>
-                         
                             <th>Giá Nhập</th>
                             <th>Giá Bán</th>
                             <th>Trạng Thái</th>
@@ -1698,8 +1780,26 @@
                         <label>Nhân Viên Bán Hàng</label>
                         <select id="nhanvien-select">
                             <option value="">-- Chọn nhân viên --</option>
-                            ${nhanvienList.map(nv => `<option value="${nv.id}">${nv.tenNV} (${nv.maNV})</option>`).join('')}
+                            ${(() => {
+                                // Lọc nhân viên chỉ hiển thị nhân viên bán hàng
+                                const banHangNhanVien = nhanvienList.filter(nv => {
+                                    const tenVT = (nv.tenVT || '').toLowerCase();
+                                    return tenVT.includes('bán hàng') || tenVT.includes('ban hang') || 
+                                           tenVT.includes('seller') || tenVT.includes('sales') ||
+                                           tenVT.includes('nhân viên') || tenVT.includes('nhan vien');
+                                });
+                                return banHangNhanVien.map(nv => `<option value="${nv.id}">${nv.tenNV} (${nv.maNV})</option>`).join('');
+                            })()}
                         </select>
+                        ${(() => {
+                            const banHangNhanVien = nhanvienList.filter(nv => {
+                                const tenVT = (nv.tenVT || '').toLowerCase();
+                                return tenVT.includes('bán hàng') || tenVT.includes('ban hang') || 
+                                       tenVT.includes('seller') || tenVT.includes('sales') ||
+                                       tenVT.includes('nhân viên') || tenVT.includes('nhan vien');
+                            });
+                            return banHangNhanVien.length === 0 ? '<p style="font-size: 11px; color: #dc2626; margin-top: 5px;">Không có nhân viên bán hàng</p>' : '';
+                        })()}
                     </div>
 
                     <!-- Summary -->
@@ -3081,15 +3181,40 @@
         }
 
         // ==================== PHIẾU NHẬP ====================
+        let phieuNhapList = [];
+        let phieuNhapCart = []; // Giỏ hàng cho phiếu nhập
+        let currentViewingPhieuNhap = null; // Lưu phiếu nhập đang xem
+
+        // Kiểm tra quyền tạo phiếu nhập
+        function canCreatePhieuNhap() {
+            if (!currentUserNhanVien) {
+                // Nếu chưa có thông tin nhân viên, thử tìm lại
+                if (currentUser && currentUser.idNV) {
+                    currentUserNhanVien = nhanvienList.find(nv => nv.id === currentUser.idNV);
+                }
+            }
+            
+            if (!currentUserNhanVien || !currentUserNhanVien.tenVT) {
+                return false;
+            }
+            
+            const tenVT = (currentUserNhanVien.tenVT || '').toLowerCase();
+            return tenVT.includes('quản lý') || tenVT.includes('quan ly') || 
+                   tenVT.includes('thủ kho') || tenVT.includes('thu kho') ||
+                   tenVT.includes('warehouse') || tenVT.includes('manager');
+        }
+
         async function renderPhieuNhap() {
+            const hasPermission = canCreatePhieuNhap();
             const content = document.getElementById('page-content');
             content.innerHTML = `
                 <div class="page-header">
                     <div>
                         <h2>Quản Lý Phiếu Nhập Hàng</h2>
                         <p>Quản lý các phiếu nhập hàng vào kho</p>
+                        ${!hasPermission ? '<p style="color: #dc2626; font-size: 12px; margin-top: 5px;">⚠️ Chỉ quản lý và thủ kho mới có quyền tạo phiếu nhập</p>' : ''}
                     </div>
-                    <button class="btn btn-success" onclick="openNewPhieuNhapModal()">➕ Tạo Phiếu Nhập Mới</button>
+                    ${hasPermission ? '<button class="btn btn-success" onclick="renderCreatePhieuNhap()">➕ Tạo Phiếu Nhập Mới</button>' : ''}
                 </div>
                 <div class="search-box">
                     <input type="text" class="search-input" id="search-phieunhap" placeholder="Tìm theo mã phiếu, nhân viên..." oninput="filterPhieuNhap()">
@@ -3104,27 +3229,876 @@
             await loadPhieuNhap();
         }
 
+        // Tạo phiếu nhập mới - hiển thị trực tiếp trên trang
+        async function renderCreatePhieuNhap() {
+            // Kiểm tra quyền trước khi cho phép tạo
+            if (!canCreatePhieuNhap()) {
+                showToast('Bạn không có quyền tạo phiếu nhập. Chỉ quản lý và thủ kho mới có quyền này.', 'error');
+                renderPhieuNhap(); // Quay lại trang danh sách
+                return;
+            }
+            
+            const content = document.getElementById('page-content');
+            // KHÔNG reset cart - giữ lại hàng hóa đã thêm (bao gồm hàng hóa mới)
+            
+            content.innerHTML = `
+                <div class="page-header">
+                    <div>
+                        <h2>➕ Tạo Phiếu Nhập Hàng Mới</h2>
+                        <p>Chọn hoặc thêm hàng hóa vào phiếu nhập</p>
+                    </div>
+                    <button class="btn btn-outline" onclick="renderPhieuNhap()">← Quay lại danh sách</button>
+                </div>
+                <div class="cart-section">
+                    <div class="products-panel">
+                        <div class="search-box" style="background: transparent; padding: 0; margin-bottom: 15px;">
+                            <input type="text" class="search-input" id="search-phieunhap-product" placeholder="Tìm sản phẩm..." oninput="filterPhieuNhapProducts()">
+                            <button class="btn btn-primary" onclick="filterPhieuNhapProducts()">Tìm</button>
+                            <button class="btn btn-secondary" onclick="reloadPhieuNhapProducts()">Tải lại</button>
+                            <button class="btn btn-success" onclick="renderAddNewProducts()">➕ Thêm Hàng Hóa Mới</button>
+                        </div>
+                        <div id="phieunhap-products" class="product-grid"></div>
+                    </div>
+                    <div class="cart-panel">
+                        <div class="panel-title">Danh Sách Nhập</div>
+                        <div id="phieunhap-cart-items"></div>
+                        <div id="phieunhap-cart-summary"></div>
+                    </div>
+                </div>
+            `;
+
+            await loadProducts();
+            renderPhieuNhapProducts(products);
+            renderPhieuNhapCart();
+        }
+        
+        // View thêm nhiều hàng hóa mới vào phiếu nhập (chưa tạo trong database)
+        let newProductsList = []; // Danh sách hàng hóa mới tạm thời
+        
+        function renderAddNewProducts() {
+            const content = document.getElementById('page-content');
+            newProductsList = []; // Reset danh sách
+            
+            content.innerHTML = `
+                <div class="page-header">
+                    <div>
+                        <h2>➕ Thêm Hàng Hóa Mới Vào Phiếu Nhập</h2>
+                        <p>Thêm hàng hóa mới vào phiếu nhập (sẽ được tạo khi lưu phiếu nhập)</p>
+                    </div>
+                    <button class="btn btn-outline" onclick="renderCreatePhieuNhap()">← Quay lại</button>
+                </div>
+                
+                <div style="background: white; border-radius: 12px; padding: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                    <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ff9800;">
+                        <p style="margin: 0; color: #e65100; font-size: 13px;">
+                            <strong>ℹ️ Lưu ý:</strong> Hàng hóa mới sẽ được thêm vào phiếu nhập và tự động tạo trong hệ thống khi bạn lưu phiếu nhập.
+                        </p>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="margin: 0; color: #1a2b48;">Danh Sách Hàng Hóa Mới</h3>
+                        <button class="btn btn-primary" onclick="addNewProductRow()">➕ Thêm Dòng</button>
+                    </div>
+                    
+                    <div id="new-products-list" style="margin-bottom: 20px;">
+                        <!-- Danh sách hàng hóa sẽ được thêm vào đây -->
+                    </div>
+                    
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 600; color: #1a2b48;">Tổng số hàng hóa:</span>
+                            <span id="total-products-count" style="font-size: 18px; font-weight: 700; color: #1976d2;">0</span>
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button class="btn btn-outline" onclick="renderCreatePhieuNhap()">Hủy</button>
+                        <button class="btn btn-success" onclick="addNewProductsToPhieuNhap()" id="add-to-phieunhap-btn" disabled>
+                            ➕ Thêm Vào Phiếu Nhập (<span id="add-count">0</span>)
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // Thêm dòng đầu tiên
+            addNewProductRow();
+        }
+        
+        function addNewProductRow() {
+            const listContainer = document.getElementById('new-products-list');
+            if (!listContainer) return;
+            
+            const rowId = 'product-row-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            const productData = {
+                id: rowId,
+                tenHang: '',
+                idPLSP: '',
+                gianhap: 0,
+                giaban: 0,
+                soluong: 0,
+                tonKhoToiThieu: 10
+            };
+            
+            newProductsList.push(productData);
+            
+            const rowHTML = `
+                <div class="product-form-row" id="${rowId}" style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 15px; border: 2px solid #e0e0e0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h4 style="margin: 0; color: #1a2b48;">Hàng Hóa #${newProductsList.length}</h4>
+                        <button class="btn btn-danger btn-sm" onclick="removeProductRow('${rowId}')" style="padding: 6px 12px; font-size: 12px;">🗑️ Xóa</button>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label>Tên Hàng *</label>
+                            <input type="text" class="product-input" data-id="${rowId}" data-field="tenHang" required placeholder="Nhập tên hàng hóa" onchange="updateProductData('${rowId}')">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Phân Loại *</label>
+                            <select class="product-input" data-id="${rowId}" data-field="idPLSP" required onchange="updateProductData('${rowId}')">
+                                <option value="">-- Chọn --</option>
+                                ${phanLoaiSanPhamList.map(pl => `<option value="${pl.id}">${pl.tenPLSP}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Giá Nhập *</label>
+                            <input type="number" class="product-input" data-id="${rowId}" data-field="gianhap" required min="0" step="1000" placeholder="0" onchange="updateProductData('${rowId}')">
+                        </div>
+                        <div class="form-group">
+                            <label>Giá Bán *</label>
+                            <input type="number" class="product-input" data-id="${rowId}" data-field="giaban" required min="0" step="1000" placeholder="0" onchange="updateProductData('${rowId}')">
+                        </div>
+                        <div class="form-group">
+                            <label>Số Lượng</label>
+                            <input type="number" class="product-input" data-id="${rowId}" data-field="soluong" min="0" value="0" placeholder="0" onchange="updateProductData('${rowId}')">
+                        </div>
+                        <div class="form-group">
+                            <label>Tồn Kho Tối Thiểu</label>
+                            <input type="number" class="product-input" data-id="${rowId}" data-field="tonKhoToiThieu" min="0" value="10" placeholder="10" onchange="updateProductData('${rowId}')">
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            listContainer.insertAdjacentHTML('beforeend', rowHTML);
+            updateSaveButton();
+        }
+        
+        function removeProductRow(rowId) {
+            // Xóa khỏi danh sách
+            newProductsList = newProductsList.filter(p => p.id !== rowId);
+            
+            // Xóa khỏi DOM
+            const rowElement = document.getElementById(rowId);
+            if (rowElement) {
+                rowElement.remove();
+            }
+            
+            // Cập nhật số thứ tự và nút lưu
+            updateRowNumbers();
+            updateSaveButton();
+        }
+        
+        function updateRowNumbers() {
+            const rows = document.querySelectorAll('.product-form-row');
+            rows.forEach((row, index) => {
+                const header = row.querySelector('h4');
+                if (header) {
+                    header.textContent = `Hàng Hóa #${index + 1}`;
+                }
+            });
+        }
+        
+        function updateProductData(rowId) {
+            const product = newProductsList.find(p => p.id === rowId);
+            if (!product) return;
+            
+            const inputs = document.querySelectorAll(`[data-id="${rowId}"]`);
+            inputs.forEach(input => {
+                const field = input.dataset.field;
+                if (field) {
+                    if (input.type === 'number') {
+                        product[field] = parseFloat(input.value) || 0;
+                    } else {
+                        product[field] = input.value;
+                    }
+                }
+            });
+            
+            updateSaveButton();
+        }
+        
+        function updateSaveButton() {
+            const totalCount = newProductsList.length;
+            const validCount = newProductsList.filter(p => 
+                p.tenHang && p.idPLSP && p.gianhap > 0 && p.giaban > 0
+            ).length;
+            
+            const countElement = document.getElementById('total-products-count');
+            const addCountElement = document.getElementById('add-count');
+            const addButton = document.getElementById('add-to-phieunhap-btn');
+            
+            if (countElement) countElement.textContent = totalCount;
+            if (addCountElement) addCountElement.textContent = validCount;
+            if (addButton) {
+                addButton.disabled = validCount === 0;
+            }
+        }
+        
+        // Thêm hàng hóa mới vào giỏ hàng phiếu nhập (chưa tạo trong database)
+        async function addNewProductsToPhieuNhap() {
+            const validProducts = newProductsList.filter(p => 
+                p.tenHang && p.idPLSP && p.gianhap > 0 && p.giaban > 0
+            );
+            
+            if (validProducts.length === 0) {
+                showToast('Không có hàng hóa hợp lệ để thêm', 'error');
+                return;
+            }
+            
+            // Thêm vào giỏ hàng phiếu nhập với flag là hàng hóa mới
+            validProducts.forEach(product => {
+                // Tạo mã tạm thời cho hàng hóa mới
+                const tempId = 'NEW-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                
+                phieuNhapCart.push({
+                    id: null, // Chưa có id vì chưa tạo trong database
+                    tempId: tempId, // ID tạm thời
+                    maHang: 'MỚI', // Đánh dấu là hàng mới
+                    name: product.tenHang,
+                    price: product.gianhap, // Giá nhập
+                    quantity: product.soluong || 1, // Số lượng nhập
+                    isNew: true, // Flag đánh dấu là hàng hóa mới
+                    newProductData: {
+                        tenHang: product.tenHang,
+                        idPLSP: parseInt(product.idPLSP),
+                        gianhap: product.gianhap,
+                        giaban: product.giaban,
+                        soluong: product.soluong || 0,
+                        tonKhoToiThieu: product.tonKhoToiThieu || 10
+                    }
+                });
+            });
+            
+            showToast(`Đã thêm ${validProducts.length} hàng hóa mới vào phiếu nhập`, 'success');
+            
+            // Quay lại trang tạo phiếu nhập và reload danh sách sản phẩm
+            await loadProducts(); // Reload để cập nhật danh sách
+            renderCreatePhieuNhap();
+        }
+
         async function loadPhieuNhap() {
             try {
-                // Tạm thời hiển thị thông báo vì chưa có API
-                const container = document.getElementById('phieunhap-container');
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <p>Chức năng quản lý phiếu nhập hàng đang được phát triển.</p>
-                        <p style="font-size: 12px; color: #999; margin-top: 10px;">Vui lòng liên hệ admin để thêm phiếu nhập.</p>
-                    </div>
-                `;
+                const response = await fetch(`${API_BASE}/phieunhap`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    phieuNhapList = result.data;
+                    renderPhieuNhapTable(phieuNhapList);
+                } else {
+                    showToast('Lỗi tải dữ liệu phiếu nhập', 'error');
+                }
             } catch (error) {
-                showToast('Lỗi tải dữ liệu', 'error');
+                console.error('Error loading phieu nhap:', error);
+                showToast('Lỗi kết nối server', 'error');
             }
         }
 
-        function filterPhieuNhap() {
-            // Tạm thời
+        function renderPhieuNhapTable(data) {
+            const container = document.getElementById('phieunhap-container');
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>Chưa có phiếu nhập nào</p></div>';
+                return;
+            }
+
+            container.innerHTML = `
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Mã Phiếu</th>
+                            <th>Ngày Nhập</th>
+                            <th>Nhân Viên</th>
+                            <th>Tổng Tiền</th>
+                            <th>Thao Tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.map(p => `
+                            <tr>
+                                <td><strong>${p.maPN}</strong></td>
+                                <td>${formatDate(p.ngayNhap)}</td>
+                                <td>${p.tenNhanVien || '-'} (${p.maNV || '-'})</td>
+                                <td><strong class="value-success">${formatCurrency(p.tongTien || 0)}</strong></td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" onclick="viewPhieuNhapDetail('${p.maPN}')" title="Xem chi tiết">📄 Xem</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
         }
 
-        function openNewPhieuNhapModal() {
-            showToast('Chức năng đang được phát triển', 'info');
+        function filterPhieuNhap() {
+            const keyword = document.getElementById('search-phieunhap').value.toLowerCase();
+            const filtered = phieuNhapList.filter(p =>
+                (p.maPN && p.maPN.toLowerCase().includes(keyword)) ||
+                (p.tenNhanVien && p.tenNhanVien.toLowerCase().includes(keyword)) ||
+                (p.maNV && p.maNV.toLowerCase().includes(keyword))
+            );
+            renderPhieuNhapTable(filtered);
+        }
+
+        async function viewPhieuNhapDetail(maPN) {
+            try {
+                const phieuNhap = phieuNhapList.find(p => p.maPN === maPN);
+                if (!phieuNhap || !phieuNhap.id) {
+                    showToast('Không tìm thấy phiếu nhập', 'error');
+                    return;
+                }
+
+                const response = await fetch(`${API_BASE}/chitietphieunhap/${phieuNhap.id}`);
+                const result = await response.json();
+
+                if (!result.success || !result.data || result.data.length === 0) {
+                    showToast('Không có chi tiết phiếu nhập', 'error');
+                    return;
+                }
+
+                const details = result.data;
+                currentViewingPhieuNhap = phieuNhap;
+                
+                // Tính tổng tiền từ chi tiết
+                const tongTien = details.reduce((sum, item) => sum + (parseFloat(item.thanhTien) || 0), 0);
+
+                // Hiển thị trực tiếp trong page-content
+                const content = document.getElementById('page-content');
+                content.innerHTML = `
+                    <div class="page-header">
+                        <div>
+                            <h2>📋 Chi Tiết Phiếu Nhập Hàng</h2>
+                            <p>Mã phiếu: ${maPN} | Ngày nhập: ${formatDate(phieuNhap.ngayNhap)}</p>
+                        </div>
+                        <button class="btn btn-outline" onclick="renderPhieuNhap()">← Quay lại danh sách</button>
+                    </div>
+                    <div style="padding: 0;">
+                        <!-- Header Card -->
+                        <div style="background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%); padding: 25px; border-radius: 12px; color: white; box-shadow: 0 4px 15px rgba(25, 118, 210, 0.3); margin-bottom: 25px;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+                                <div>
+                                    <h2 style="margin: 0 0 10px 0; font-size: 28px; font-weight: 900; text-shadow: 2px 2px 4px rgba(0,0,0,0.2);">
+                                        📋 PHIẾU NHẬP HÀNG
+                                    </h2>
+                                    <div style="background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 6px; display: inline-block; font-size: 16px; font-weight: 700;">
+                                        ${maPN}
+                                    </div>
+                                </div>
+                                <div style="text-align: right; background: rgba(255,255,255,0.15); padding: 12px 18px; border-radius: 8px; backdrop-filter: blur(10px);">
+                                    <div style="font-size: 12px; opacity: 0.9; margin-bottom: 5px;">Ngày nhập</div>
+                                    <div style="font-size: 18px; font-weight: 700;">${formatDate(phieuNhap.ngayNhap)}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Info Cards -->
+                        <div style="padding: 25px; background: #f8f9fa;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 25px;">
+                                <div style="background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #1976d2;">
+                                    <div style="font-size: 12px; color: #666; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Nhân viên nhập</div>
+                                    <div style="font-size: 18px; font-weight: 700; color: #1a2b48;">${phieuNhap.tenNhanVien || '-'}</div>
+                                    <div style="font-size: 13px; color: #888; margin-top: 5px;">${phieuNhap.maNV || '-'}</div>
+                                </div>
+                                <div style="background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #00b894;">
+                                    <div style="font-size: 12px; color: #666; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Số lượng sản phẩm</div>
+                                    <div style="font-size: 24px; font-weight: 900; color: #00b894;">${details.length}</div>
+                                    <div style="font-size: 13px; color: #888; margin-top: 5px;">mặt hàng</div>
+                                </div>
+                            </div>
+
+                            <!-- Products Table -->
+                            <div style="background: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden; margin-bottom: 20px;">
+                                <div style="background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%); padding: 15px 20px; border-bottom: 2px solid #1976d2;">
+                                    <h3 style="margin: 0; color: #1a2b48; font-size: 18px; font-weight: 700;">📦 Chi Tiết Hàng Hóa</h3>
+                                </div>
+                                <div style="overflow-x: auto;">
+                                    <table style="width: 100%; border-collapse: collapse;">
+                                        <thead>
+                                            <tr style="background: #f8f9fa;">
+                                                <th style="padding: 15px; text-align: left; font-weight: 700; color: #1a2b48; border-bottom: 2px solid #dee2e6; font-size: 13px; text-transform: uppercase;">STT</th>
+                                                <th style="padding: 15px; text-align: left; font-weight: 700; color: #1a2b48; border-bottom: 2px solid #dee2e6; font-size: 13px; text-transform: uppercase;">Mã Hàng</th>
+                                                <th style="padding: 15px; text-align: left; font-weight: 700; color: #1a2b48; border-bottom: 2px solid #dee2e6; font-size: 13px; text-transform: uppercase;">Tên Hàng</th>
+                                                <th style="padding: 15px; text-align: center; font-weight: 700; color: #1a2b48; border-bottom: 2px solid #dee2e6; font-size: 13px; text-transform: uppercase;">Số Lượng</th>
+                                                <th style="padding: 15px; text-align: right; font-weight: 700; color: #1a2b48; border-bottom: 2px solid #dee2e6; font-size: 13px; text-transform: uppercase;">Đơn Giá</th>
+                                                <th style="padding: 15px; text-align: right; font-weight: 700; color: #1a2b48; border-bottom: 2px solid #dee2e6; font-size: 13px; text-transform: uppercase;">Thành Tiền</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${details.map((item, index) => `
+                                                <tr style="border-bottom: 1px solid #f0f0f0; transition: background 0.2s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
+                                                    <td style="padding: 15px; color: #666; font-weight: 600;">${index + 1}</td>
+                                                    <td style="padding: 15px;">
+                                                        <span style="background: #e3f2fd; color: #1976d2; padding: 5px 12px; border-radius: 6px; font-weight: 700; font-size: 13px;">${item.maHang}</span>
+                                                    </td>
+                                                    <td style="padding: 15px; color: #1a2b48; font-weight: 600;">${item.tenHang}</td>
+                                                    <td style="padding: 15px; text-align: center; color: #1a2b48; font-weight: 600;">${item.soluong}</td>
+                                                    <td style="padding: 15px; text-align: right; color: #666;">${formatCurrency(item.dongia)}</td>
+                                                    <td style="padding: 15px; text-align: right; color: #1976d2; font-weight: 700; font-size: 15px;">${formatCurrency(item.thanhTien)}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            <!-- Summary Card -->
+                            <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
+                                <h4 style="margin: 0 0 15px 0; color: #1a2b48; font-size: 16px; font-weight: 700;">💰 Tổng Kết</h4>
+                                <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                        <span style="color: #666; font-size: 14px;">Tổng số lượng:</span>
+                                        <span style="color: #1a2b48; font-weight: 600; font-size: 15px;">${details.reduce((sum, item) => sum + (parseInt(item.soluong) || 0), 0)} sản phẩm</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                        <span style="color: #666; font-size: 14px;">Số mặt hàng:</span>
+                                        <span style="color: #1a2b48; font-weight: 600; font-size: 15px;">${details.length} loại</span>
+                                    </div>
+                                </div>
+                                <div style="background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%); padding: 18px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 15px rgba(25, 118, 210, 0.3);">
+                                    <span style="color: white; font-size: 18px; font-weight: 700;">Tổng tiền:</span>
+                                    <span style="color: white; font-size: 24px; font-weight: 900;">${formatCurrency(phieuNhap.tongTien || tongTien)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Lỗi thực thi:', error);
+                showToast('Không thể xem chi tiết phiếu nhập!', 'error');
+            }
+        }
+
+        async function reloadPhieuNhapProducts() {
+            await loadProducts();
+            document.getElementById('search-phieunhap-product').value = '';
+            renderPhieuNhapProducts(products);
+            showToast('Đã tải lại danh sách sản phẩm', 'success');
+        }
+
+        function renderPhieuNhapProducts(data) {
+            const container = document.getElementById('phieunhap-products');
+            if (!container) return;
+
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="empty-state">Không tìm thấy sản phẩm</div>';
+                return;
+            }
+
+            container.innerHTML = data.map(p => `
+                <div class="product-card" onclick="addToPhieuNhapCart('${p.maHang}')">
+                    <div class="product-card-name">${p.tenHang}</div>
+                    <div class="product-card-code">${p.maHang}</div>
+                    <span class="product-card-stock ${getStockClass(p.soluong)}">
+                        Tồn kho: ${p.soluong} sp
+                    </span>
+                    <div class="product-card-price">Giá nhập: ${formatCurrency(p.gianhap || 0)}</div>
+                    <div class="product-card-price">Giá bán: ${formatCurrency(p.giaban || 0)}</div>
+                    <button class="product-card-btn" onclick="event.stopPropagation(); addToPhieuNhapCart('${p.maHang}')">
+                        Thêm vào phiếu
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function filterPhieuNhapProducts() {
+            const keyword = document.getElementById('search-phieunhap-product').value.toLowerCase();
+            const filtered = products.filter(p =>
+                p.maHang.toLowerCase().includes(keyword) ||
+                p.tenHang.toLowerCase().includes(keyword)
+            );
+            renderPhieuNhapProducts(filtered);
+        }
+
+        function addToPhieuNhapCart(maHang) {
+            const product = products.find(p => p.maHang === maHang);
+            if (!product) {
+                showToast('Không tìm thấy sản phẩm', 'error');
+                return;
+            }
+
+            const existingItem = phieuNhapCart.find(c => c.maHang === maHang);
+            if (existingItem) {
+                existingItem.quantity++;
+            } else {
+                phieuNhapCart.push({
+                    id: product.id,
+                    maHang: product.maHang,
+                    name: product.tenHang,
+                    price: product.gianhap || 0, // Giá nhập
+                    quantity: 1
+                });
+            }
+
+            renderPhieuNhapCart();
+            showToast(`Đã thêm ${product.tenHang}`, 'success');
+        }
+
+        function updatePhieuNhapCartQty(key, delta) {
+            const item = phieuNhapCart.find(c => (c.isNew ? c.tempId : c.maHang) === key);
+            if (!item) return;
+
+            item.quantity += delta;
+
+            if (item.quantity <= 0) {
+                if (item.isNew) {
+                    phieuNhapCart = phieuNhapCart.filter(c => c.tempId !== key);
+                } else {
+                    phieuNhapCart = phieuNhapCart.filter(c => c.maHang !== key);
+                }
+            }
+
+            renderPhieuNhapCart();
+        }
+
+        function removeFromPhieuNhapCart(key) {
+            const item = phieuNhapCart.find(c => (c.isNew ? c.tempId : c.maHang) === key);
+            if (item && item.isNew) {
+                phieuNhapCart = phieuNhapCart.filter(c => c.tempId !== key);
+            } else {
+                phieuNhapCart = phieuNhapCart.filter(c => c.maHang !== key);
+            }
+            renderPhieuNhapCart();
+        }
+
+        function renderPhieuNhapCart() {
+            const itemsContainer = document.getElementById('phieunhap-cart-items');
+            const summaryContainer = document.getElementById('phieunhap-cart-summary');
+
+            if (!itemsContainer || !summaryContainer) return;
+
+            if (phieuNhapCart.length === 0) {
+                itemsContainer.innerHTML = `<div class="cart-empty"><p>Chưa có sản phẩm</p></div>`;
+                summaryContainer.innerHTML = '';
+                return;
+            }
+
+            itemsContainer.innerHTML = phieuNhapCart.map(item => {
+                const itemKey = item.isNew ? item.tempId : item.maHang;
+                const isNewBadge = item.isNew ? '<span style="background: #ff9800; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px; margin-left: 5px;">MỚI</span>' : '';
+                return `
+                <div class="cart-item">
+                    <div class="cart-item-info">
+                        <div class="cart-item-name">${item.name} ${isNewBadge}</div>
+                        <div class="cart-item-price">${formatCurrency(item.price)}</div>
+                    </div>
+                    <div class="cart-item-qty">
+                        <button class="qty-btn minus" onclick="updatePhieuNhapCartQty('${itemKey}', -1)">−</button>
+                        <span class="qty-value">${item.quantity}</span>
+                        <button class="qty-btn plus" onclick="updatePhieuNhapCartQty('${itemKey}', 1)">+</button>
+                    </div>
+                    <button class="cart-item-remove" onclick="removeFromPhieuNhapCart('${itemKey}')">✕</button>
+                </div>
+            `;
+            }).join('');
+
+            const subtotal = phieuNhapCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+            // Lọc nhân viên chỉ hiển thị thủ kho và quản lý
+            const allowedNhanVien = nhanvienList.filter(nv => {
+                const tenVT = (nv.tenVT || '').toLowerCase();
+                return tenVT.includes('quản lý') || tenVT.includes('quan ly') || 
+                       tenVT.includes('thủ kho') || tenVT.includes('thu kho') ||
+                       tenVT.includes('warehouse') || tenVT.includes('manager');
+            });
+
+            summaryContainer.innerHTML = `
+                <div class="cart-summary">
+                    <div class="form-group">
+                        <label>Người Nhập</label>
+                        <select id="phieunhap-nhanvien-select">
+                            <option value="">-- Chọn nhân viên --</option>
+                            ${allowedNhanVien.map(nv => `<option value="${nv.id}">${nv.tenNV} (${nv.maNV})</option>`).join('')}
+                        </select>
+                        ${allowedNhanVien.length === 0 ? '<p style="font-size: 11px; color: #dc2626; margin-top: 5px;">Không có nhân viên thủ kho/quản lý</p>' : ''}
+                    </div>
+
+                    <div class="cart-summary-row">
+                        <span class="label">Tạm tính:</span>
+                        <span class="value">${formatCurrency(subtotal)}</span>
+                    </div>
+                    <div class="cart-summary-row total">
+                        <span>Tổng cộng:</span>
+                        <span>${formatCurrency(subtotal)}</span>
+                    </div>
+                    
+                    <button class="btn btn-success" style="width: 100%; margin-top: 15px;" onclick="createPhieuNhap()">
+                        Tạo Phiếu Nhập
+                    </button>
+                    <button class="btn btn-outline" style="width: 100%; margin-top: 10px;" onclick="closeNewPhieuNhapSection()">
+                        Hủy
+                    </button>
+                </div>
+            `;
+        }
+
+        async function createPhieuNhap() {
+            if (phieuNhapCart.length === 0) {
+                showToast('Chưa có sản phẩm nào trong phiếu nhập', 'error');
+                return;
+            }
+
+            const selectedNVValue = document.getElementById('phieunhap-nhanvien-select').value;
+            if (!selectedNVValue) {
+                showToast('Vui lòng chọn người nhập', 'error');
+                return;
+            }
+
+            try {
+                const selectedNV = nhanvienList.find(nv => nv.id === parseInt(selectedNVValue));
+                if (!selectedNV || !selectedNV.id) {
+                    showToast('Không tìm thấy nhân viên', 'error');
+                    return;
+                }
+
+                // Tạo phiếu nhập
+                const phieuNhapRes = await fetch(`${API_BASE}/phieunhap`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idNV: selectedNV.id })
+                });
+
+                const phieuNhapResult = await phieuNhapRes.json();
+
+                if (!phieuNhapResult.success) {
+                    showToast(phieuNhapResult.message || 'Lỗi tạo phiếu nhập', 'error');
+                    return;
+                }
+
+                const idPN = phieuNhapResult.data.id;
+                const maPN = phieuNhapResult.data.maPN;
+
+                // Tách hàng hóa mới và hàng hóa có sẵn
+                const newProducts = phieuNhapCart.filter(item => item.isNew === true);
+                const existingProducts = phieuNhapCart.filter(item => !item.isNew);
+
+                // 1. Tạo hàng hóa mới trước (nếu có)
+                if (newProducts.length > 0) {
+                    showToast(`Đang tạo ${newProducts.length} hàng hóa mới...`, 'info');
+                    
+                    for (const newItem of newProducts) {
+                        try {
+                            // Tạo hàng hóa mới
+                            const createProductRes = await fetch(`${API_BASE}/hanghoa`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(newItem.newProductData)
+                            });
+
+                            const createProductResult = await createProductRes.json();
+
+                            if (!createProductResult.success) {
+                                throw new Error(createProductResult.message || 'Lỗi tạo hàng hóa');
+                            }
+
+                            const newProduct = createProductResult.data;
+
+                            // Thêm vào chi tiết phiếu nhập
+                            const detailData = {
+                                idPN: idPN,
+                                idHang: newProduct.id,
+                                soluong: newItem.quantity,
+                                dongia: newItem.price
+                            };
+
+                            const detailRes = await fetch(`${API_BASE}/chitietphieunhap`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(detailData)
+                            });
+
+                            const detailResult = await detailRes.json();
+                            if (!detailResult.success) {
+                                throw new Error(`Lỗi thêm sản phẩm ${newItem.name}: ${detailResult.message}`);
+                            }
+                        } catch (error) {
+                            console.error('Lỗi tạo hàng hóa mới:', error);
+                            // Rollback: xóa phiếu nhập nếu có lỗi
+                            await fetch(`${API_BASE}/phieunhap/${idPN}`, { method: 'DELETE' });
+                            showToast(`Lỗi: ${error.message}`, 'error');
+                            return;
+                        }
+                    }
+                }
+
+                // 2. Thêm hàng hóa có sẵn vào phiếu nhập
+                for (const item of existingProducts) {
+                    const detailData = {
+                        idPN: idPN,
+                        idHang: item.id,
+                        soluong: item.quantity,
+                        dongia: item.price
+                    };
+
+                    const detailRes = await fetch(`${API_BASE}/chitietphieunhap`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(detailData)
+                    });
+
+                    const detailResult = await detailRes.json();
+                    if (!detailResult.success) {
+                        showToast(`Lỗi thêm sản phẩm ${item.name}: ${detailResult.message}`, 'error');
+                        // Rollback: xóa phiếu nhập nếu có lỗi
+                        await fetch(`${API_BASE}/phieunhap/${idPN}`, { method: 'DELETE' });
+                        return;
+                    }
+                }
+
+                // Reload danh sách phiếu nhập và quay lại trang danh sách
+                await loadProducts(); // Reload để cập nhật số lượng
+                showToast(`Tạo phiếu nhập ${maPN} thành công! ${newProducts.length > 0 ? `Đã tạo ${newProducts.length} hàng hóa mới.` : ''}`, 'success');
+                
+                // Quay lại trang danh sách phiếu nhập
+                renderPhieuNhap();
+            } catch (error) {
+                console.error('Error creating phieu nhap:', error);
+                showToast('Lỗi: ' + error.message, 'error');
+            }
+        }
+
+        // ==================== TẠO HÀNG HÓA MỚI ====================
+        function openNewProductModal() {
+            const modal = document.getElementById('new-product-modal');
+            const typeSelect = document.getElementById('new-product-type');
+            
+            if (!modal) {
+                console.error('Modal không tồn tại');
+                showToast('Lỗi: Không tìm thấy modal', 'error');
+                return;
+            }
+            
+            if (!typeSelect) {
+                console.error('Select không tồn tại');
+                showToast('Lỗi: Không tìm thấy select phân loại', 'error');
+                return;
+            }
+            
+            // Cập nhật danh sách phân loại sản phẩm
+            if (phanLoaiSanPhamList && phanLoaiSanPhamList.length > 0) {
+                typeSelect.innerHTML = '<option value="">-- Chọn phân loại --</option>' +
+                    phanLoaiSanPhamList.map(pl => `<option value="${pl.id}">${pl.tenPLSP}</option>`).join('');
+            } else {
+                typeSelect.innerHTML = '<option value="">-- Đang tải phân loại --</option>';
+                showToast('Đang tải danh sách phân loại sản phẩm...', 'info');
+                // Thử load lại phân loại sản phẩm
+                loadPhanLoaiSanPham();
+            }
+            
+            modal.classList.add('active');
+            console.log('Modal đã mở, phân loại:', phanLoaiSanPhamList.length);
+        }
+        
+        async function loadPhanLoaiSanPham() {
+            try {
+                const response = await fetch(`${API_BASE}/phanloaisanpham`);
+                const result = await response.json();
+                if (result.success) {
+                    phanLoaiSanPhamList = result.data;
+                    const typeSelect = document.getElementById('new-product-type');
+                    if (typeSelect) {
+                        typeSelect.innerHTML = '<option value="">-- Chọn phân loại --</option>' +
+                            phanLoaiSanPhamList.map(pl => `<option value="${pl.id}">${pl.tenPLSP}</option>`).join('');
+                    }
+                }
+            } catch (error) {
+                console.error('Lỗi load phân loại sản phẩm:', error);
+            }
+        }
+
+        function closeNewProductModal() {
+            const modal = document.getElementById('new-product-modal');
+            if (modal) {
+                modal.classList.remove('active');
+                const form = document.getElementById('new-product-form');
+                if (form) form.reset();
+            }
+        }
+
+        async function saveNewProduct(event) {
+            event.preventDefault();
+            console.log('Bắt đầu lưu hàng hóa mới');
+            
+            const tenHang = document.getElementById('new-product-name')?.value.trim();
+            const idPLSP = document.getElementById('new-product-type')?.value;
+            const gianhap = parseFloat(document.getElementById('new-product-gianhap')?.value) || 0;
+            const giaban = parseFloat(document.getElementById('new-product-giaban')?.value) || 0;
+            const soluong = parseInt(document.getElementById('new-product-soluong')?.value) || 0;
+            const tonKhoToiThieu = parseInt(document.getElementById('new-product-tonkho')?.value) || 10;
+
+            console.log('Dữ liệu form:', { tenHang, idPLSP, gianhap, giaban, soluong, tonKhoToiThieu });
+
+            if (!tenHang || !idPLSP) {
+                showToast('Vui lòng nhập đầy đủ thông tin bắt buộc (Tên hàng và Phân loại)', 'error');
+                return;
+            }
+
+            if (gianhap <= 0 || giaban <= 0) {
+                showToast('Giá nhập và giá bán phải lớn hơn 0', 'error');
+                return;
+            }
+
+            try {
+                const productData = {
+                    tenHang,
+                    idPLSP: parseInt(idPLSP),
+                    gianhap,
+                    giaban,
+                    soluong,
+                    tonKhoToiThieu
+                };
+                
+                console.log('Gửi dữ liệu:', productData);
+                
+                const response = await fetch(`${API_BASE}/hanghoa`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(productData)
+                });
+
+                console.log('Response status:', response.status);
+                const result = await response.json();
+                console.log('Response data:', result);
+
+                if (result.success) {
+                    // Reload products
+                    await loadProducts();
+                    
+                    // Nếu đang ở trang tạo phiếu nhập, reload lại danh sách sản phẩm
+                    if (currentPage === 'create-phieunhap') {
+                        renderPhieuNhapProducts(products);
+                    }
+                    
+                    closeNewProductModal();
+                    showToast(`Đã thêm hàng hóa mới: ${result.data.maHang}`, 'success');
+                    
+                    // Tự động thêm vào giỏ hàng phiếu nhập nếu đang ở trang tạo phiếu nhập
+                    if (currentPage === 'create-phieunhap' && result.data) {
+                        const newProduct = result.data;
+                        // Đợi một chút để đảm bảo products đã được reload
+                        setTimeout(() => {
+                            addToPhieuNhapCart(newProduct.maHang);
+                        }, 500);
+                    }
+                } else {
+                    showToast(result.message || 'Lỗi thêm hàng hóa', 'error');
+                    console.error('Lỗi từ server:', result);
+                }
+            } catch (error) {
+                console.error('Lỗi khi gọi API:', error);
+                showToast('Lỗi: ' + error.message, 'error');
+            }
         }
 
         // ==================== TRẢ HÀNG ====================

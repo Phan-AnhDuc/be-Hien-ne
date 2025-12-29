@@ -107,11 +107,24 @@ function renderTable(data) {
             if (typeof value === 'boolean') {
                 value = value ? 'Còn hiệu lực' : 'Hết hiệu lực';
             }
-            if (field === 'tongtien' || field === 'tiengiamgia') {
+            if (field === 'tongtien' || field === 'tiengiamgia' || field === 'tongTien') {
                 value = value ? parseFloat(value).toLocaleString('vi-VN') + ' đ' : '0 đ';
             }
             if (field === 'phantramgiam') {
                 value = value + '%';
+            }
+            if ((field === 'ngayNhap' || field === 'ngayNhapCuoi' || field === 'ngayLap') && value) {
+                const date = new Date(value);
+                if (field === 'ngayNhapCuoi') {
+                    // ngayNhapCuoi là DATE, không có giờ
+                    value = date.toLocaleDateString('vi-VN');
+                } else {
+                    // ngayNhap và ngayLap là DATETIME, có giờ
+                    value = date.toLocaleDateString('vi-VN') + ' ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                }
+            }
+            if (field === 'diemDaDung' && value !== null && value !== undefined) {
+                value = parseInt(value) || 0;
             }
             html += `<td>${value}</td>`;
         });
@@ -123,6 +136,11 @@ function renderTable(data) {
         if (currentPage === 'hoadon') {
             html += `<button class="btn btn-secondary btn-sm" onclick="exportPDF('${item.maHD}')">📄 PDF</button>`;
             html += `<button class="btn btn-success btn-sm" onclick="exportExcel('${item.maHD}')">📊 Excel</button>`;
+        }
+        
+        // Add view detail button for phieunhap
+        if (currentPage === 'phieunhap') {
+            html += `<button class="btn btn-primary btn-sm" onclick="viewPhieuNhapDetail(${item.id}, '${item.maPN}')">👁️ Xem Chi Tiết</button>`;
         }
         
         html += `</td></tr>`;
@@ -158,12 +176,13 @@ function openEditModal(index) {
 }
 
 // Render form
-function renderForm(data = null) {
+async function renderForm(data = null) {
     const page = pages[currentPage];
     const modalBody = document.getElementById('modal-body');
 
     let html = '<form id="data-form" onsubmit="saveData(event)">';
-    page.fields.forEach(field => {
+    
+    for (const field of page.fields) {
         let value = data ? (data[field.name] ?? '') : '';
         
         // Format date for input
@@ -173,6 +192,9 @@ function renderForm(data = null) {
             // Already formatted
         } else if (field.type === 'number' && value !== '') {
             value = parseFloat(value);
+        } else if (field.name === 'gioitinh') {
+            // gioitinh is string 'Nam' or 'Nữ', keep as is
+            value = value || '';
         } else if (field.type === 'select' && value === true) {
             value = '1';
         } else if (field.type === 'select' && value === false) {
@@ -190,10 +212,18 @@ function renderForm(data = null) {
             <label>${field.label} ${field.required ? '<span style="color:red">*</span>' : ''}</label>`;
 
         if (field.type === 'select') {
-            html += `<select name="${field.name}" ${field.required ? 'required' : ''}>`;
-            field.options.forEach(opt => {
-                html += `<option value="${opt.value}" ${value == opt.value ? 'selected' : ''}>${opt.label}</option>`;
-            });
+            html += `<select name="${field.name}" ${field.required ? 'required' : ''} id="select-${field.name}">`;
+            
+            // If field has predefined options, use them
+            if (field.options) {
+                field.options.forEach(opt => {
+                    html += `<option value="${opt.value}" ${value == opt.value ? 'selected' : ''}>${opt.label}</option>`;
+                });
+            } else {
+                // Load options dynamically from API
+                html += '<option value="">Đang tải...</option>';
+            }
+            
             html += '</select>';
         } else {
             const inputType = field.type === 'number' ? 'number' :
@@ -203,13 +233,89 @@ function renderForm(data = null) {
             html += `<input type="${inputType}" name="${field.name}" value="${value}" ${field.required ? 'required' : ''} ${readonly} step="${field.type === 'number' ? 'any' : ''}" placeholder="${field.name === 'codeMGG' ? 'Nhập mã giảm giá (ví dụ: SALE10)' : ''}">`;
         }
         html += '</div>';
-    });
+    }
     html += `<div class="form-actions">
         <button type="button" class="btn btn-secondary" onclick="closeModal()">Hủy</button>
         <button type="submit" class="btn btn-success">💾 Lưu</button>
     </div></form>`;
 
     modalBody.innerHTML = html;
+    
+    // Load dynamic select options - wait for DOM to be ready
+    // Use requestAnimationFrame to ensure DOM is fully rendered
+    requestAnimationFrame(async () => {
+        const loadPromises = [];
+        for (const field of page.fields) {
+            if (field.type === 'select' && !field.options) {
+                // Get the correct value from data for this specific field
+                const fieldValue = data ? (data[field.name] ?? '') : '';
+                loadPromises.push(loadSelectOptions(field.name, fieldValue));
+            }
+        }
+        // Load all selects in parallel
+        await Promise.all(loadPromises);
+    });
+}
+
+// Load select options from API
+async function loadSelectOptions(fieldName, selectedValue = '') {
+    const select = document.getElementById(`select-${fieldName}`);
+    if (!select) return;
+    
+    try {
+        let apiEndpoint = '';
+        let valueField = 'id';
+        let labelField = '';
+        
+        if (fieldName === 'idNV') {
+            apiEndpoint = 'nhanvien';
+            labelField = 'tenNV';
+        } else if (fieldName === 'idKH') {
+            apiEndpoint = 'khachhang';
+            labelField = 'tenKH';
+        } else if (fieldName === 'idKM') {
+            apiEndpoint = 'khuyenmai';
+            labelField = 'tenKM';
+        } else if (fieldName === 'idVT') {
+            apiEndpoint = 'vitri';
+            labelField = 'tenVT';
+        } else if (fieldName === 'idPLKH') {
+            apiEndpoint = 'phanloaikh';
+            labelField = 'tenPLKH';
+        } else if (fieldName === 'idPLSP') {
+            apiEndpoint = 'phanloaisanpham';
+            labelField = 'tenPLSP';
+        } else if (fieldName === 'idHD') {
+            apiEndpoint = 'hoadon';
+            labelField = 'maHD';
+        } else if (fieldName === 'idHang') {
+            apiEndpoint = 'hanghoa';
+            labelField = 'tenHang';
+        }
+        
+        if (!apiEndpoint) return;
+        
+        const result = await apiGet(apiEndpoint);
+        if (result.success && result.data && result.data.length > 0) {
+            select.innerHTML = '<option value="">Chọn...</option>';
+            result.data.forEach(item => {
+                const optionValue = item[valueField];
+                const optionLabel = item[labelField] || item[`ma${fieldName.replace('id', '')}`] || optionValue;
+                // Convert both to string for comparison to handle number/string mismatch
+                const selected = String(optionValue) === String(selectedValue) ? 'selected' : '';
+                select.innerHTML += `<option value="${optionValue}" ${selected}>${optionLabel}</option>`;
+            });
+        } else {
+            console.warn(`No data returned for ${fieldName} from ${apiEndpoint}:`, result);
+            select.innerHTML = '<option value="">Không có dữ liệu</option>';
+        }
+    } catch (error) {
+        console.error(`Error loading options for ${fieldName}:`, error);
+        const select = document.getElementById(`select-${fieldName}`);
+        if (select) {
+            select.innerHTML = '<option value="">Lỗi tải dữ liệu</option>';
+        }
+    }
 }
 
 // Save data
@@ -223,10 +329,18 @@ async function saveData(event) {
     formData.forEach((value, key) => {
         if (value !== '') {
             if (key === 'gioitinh') {
-                data[key] = value === '1';
+                // gioitinh should be string 'Nam' or 'Nữ', not boolean
+                data[key] = value; // Keep as string ('Nam' or 'Nữ')
             } else if (key.includes('ngay') || key.includes('date')) {
                 data[key] = value;
+            } else if (key === 'sdt') {
+                // sdt must be string, not number
+                data[key] = String(value);
+            } else if (key.startsWith('id') || key.includes('id')) {
+                // ID fields should be numbers
+                data[key] = parseInt(value) || parseFloat(value);
             } else if (!isNaN(value) && value !== '') {
+                // Other numeric fields
                 data[key] = parseFloat(value);
             } else {
                 data[key] = value;
@@ -244,8 +358,13 @@ async function saveData(event) {
                 const keys = page.compositeKey.map(k => item[k]).join('/');
                 endpoint += `/${keys}`;
             } else {
-                const keyField = page.fields.find(f => f.name.includes('ma') && f.required);
-                endpoint += `/${item[keyField.name]}`;
+                // Use id for phieunhap, otherwise use ma field
+                if (currentPage === 'phieunhap') {
+                    endpoint += `/${item.id}`;
+                } else {
+                    const keyField = page.fields.find(f => f.name.includes('ma') && f.required);
+                    endpoint += `/${item[keyField ? keyField.name : 'id']}`;
+                }
             }
             result = await apiPut(endpoint, data);
         } else {
@@ -280,8 +399,13 @@ async function deleteItem(index) {
             const keys = page.compositeKey.map(k => item[k]).join('/');
             endpoint += `/${keys}`;
         } else {
-            const keyField = page.fields.find(f => f.name.includes('ma') && f.required);
-            endpoint += `/${item[keyField.name]}`;
+            // Use id for phieunhap, otherwise use ma field
+            if (currentPage === 'phieunhap') {
+                endpoint += `/${item.id}`;
+            } else {
+                const keyField = page.fields.find(f => f.name.includes('ma') && f.required);
+                endpoint += `/${item[keyField ? keyField.name : 'id']}`;
+            }
         }
 
         const result = await apiDelete(endpoint);
@@ -420,6 +544,85 @@ async function exportExcel(maHD) {
         document.body.removeChild(a);
         
         showAlert('Xuất Excel thành công!', 'success');
+    } catch (error) {
+        showAlert('Lỗi: ' + error.message, 'error');
+    }
+}
+
+// View phieunhap detail
+async function viewPhieuNhapDetail(id, maPN) {
+    try {
+        const [phieuNhapRes, chiTietRes] = await Promise.all([
+            apiGet(`phieunhap/${id}`),
+            apiGet(`chitietphieunhap/${id}`)
+        ]);
+        
+        if (!phieuNhapRes.success || !chiTietRes.success) {
+            showAlert('Không thể tải chi tiết phiếu nhập', 'error');
+            return;
+        }
+        
+        const phieuNhap = phieuNhapRes.data;
+        const chiTiet = chiTietRes.data;
+        
+        const modal = document.getElementById('modal');
+        document.getElementById('modal-title').textContent = `Chi Tiết Phiếu Nhập: ${maPN}`;
+        
+        let html = `
+            <div style="padding: 20px;">
+                <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <h4 style="margin: 0; color: #e65100;">📥 Phiếu Nhập: ${maPN}</h4>
+                    <p style="margin: 5px 0 0 0; color: #666;">
+                        Ngày nhập: ${new Date(phieuNhap.ngayNhap).toLocaleString('vi-VN')}<br>
+                        Nhân viên: ${phieuNhap.tenNhanVien || phieuNhap.maNV || 'N/A'}
+                    </p>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <h4 style="color: #1a2b48; margin-bottom: 10px;">Danh Sách Hàng Hóa</h4>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f5f5f5;">
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">STT</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Mã Hàng</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #ddd;">Tên Hàng</th>
+                                <th style="padding: 10px; text-align: right; border: 1px solid #ddd;">Số Lượng</th>
+                                <th style="padding: 10px; text-align: right; border: 1px solid #ddd;">Đơn Giá</th>
+                                <th style="padding: 10px; text-align: right; border: 1px solid #ddd;">Thành Tiền</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        chiTiet.forEach((item, index) => {
+            html += `
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${index + 1}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${item.maHang || 'N/A'}</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">${item.tenHang || 'N/A'}</td>
+                    <td style="padding: 10px; text-align: right; border: 1px solid #ddd;">${item.soluong || 0}</td>
+                    <td style="padding: 10px; text-align: right; border: 1px solid #ddd;">${parseFloat(item.dongia || 0).toLocaleString('vi-VN')} đ</td>
+                    <td style="padding: 10px; text-align: right; border: 1px solid #ddd; font-weight: bold;">${parseFloat(item.thanhTien || 0).toLocaleString('vi-VN')} đ</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+                <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; border-left: 4px solid #ff9800; text-align: right;">
+                    <div style="font-size: 18px; font-weight: bold; color: #e65100;">
+                        Tổng Tiền: ${parseFloat(phieuNhap.tongTien || 0).toLocaleString('vi-VN')} đ
+                    </div>
+                </div>
+                <div style="margin-top: 20px; text-align: right;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Đóng</button>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('modal-body').innerHTML = html;
+        modal.classList.add('active');
     } catch (error) {
         showAlert('Lỗi: ' + error.message, 'error');
     }

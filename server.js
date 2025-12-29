@@ -1774,6 +1774,514 @@ app.delete('/api/chitiethd/:idHD/:idHang', async (req, res) => {
     }
 });
 
+// ================== PHIEUNHAP APIs ==================
+// GET all
+app.get('/api/phieunhap', async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .query(`SELECT p.id, p.maPN, p.ngayNhap, p.idNV, p.tongTien,
+                    nv.maNV, nv.tenNV as tenNhanVien,
+                    (SELECT ISNULL(SUM(thanhTien), 0) FROM CHITIET_PHIEUNHAP WHERE idPN = p.id) as subtotal
+                    FROM PHIEUNHAP p
+                    LEFT JOIN NHANVIEN nv ON p.idNV = nv.id
+                    ORDER BY p.ngayNhap DESC`);
+
+        res.status(200).json({
+            success: true,
+            count: result.recordset.length,
+            data: result.recordset
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi lấy dữ liệu phiếu nhập',
+            error: err.message
+        });
+    }
+});
+
+// GET by ID
+app.get('/api/phieunhap/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('id', sql.Int, id)
+            .query(`SELECT p.id, p.maPN, p.ngayNhap, p.idNV, p.tongTien,
+                    nv.maNV, nv.tenNV as tenNhanVien
+                    FROM PHIEUNHAP p
+                    LEFT JOIN NHANVIEN nv ON p.idNV = nv.id
+                    WHERE p.id = @id`);
+
+        if (result.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy phiếu nhập'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: result.recordset[0]
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi server',
+            error: err.message
+        });
+    }
+});
+
+// POST - Tạo phiếu nhập mới
+app.post('/api/phieunhap', async (req, res) => {
+    const { idNV } = req.body;
+    if (!idNV) {
+        return res.status(400).json({
+            success: false,
+            message: 'Thiếu thông tin bắt buộc: idNV'
+        });
+    }
+    try {
+        const pool = await poolPromise;
+        
+        // Kiểm tra nhân viên có quyền (quản lý hoặc thủ kho)
+        const nvResult = await pool.request()
+            .input('idNV', sql.Int, idNV)
+            .query(`SELECT nv.id, nv.maNV, nv.tenNV, vt.tenVT
+                    FROM NHANVIEN nv
+                    LEFT JOIN VITRI vt ON nv.idVT = vt.id
+                    WHERE nv.id = @idNV`);
+        
+        if (nvResult.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy nhân viên'
+            });
+        }
+        
+        const nv = nvResult.recordset[0];
+        const tenVT = (nv.tenVT || '').toLowerCase();
+        
+        // Chỉ cho phép quản lý và thủ kho
+        if (!tenVT.includes('quản lý') && !tenVT.includes('quan ly') && 
+            !tenVT.includes('thủ kho') && !tenVT.includes('thu kho') &&
+            !tenVT.includes('warehouse') && !tenVT.includes('manager')) {
+            return res.status(403).json({
+                success: false,
+                message: 'Chỉ quản lý và thủ kho mới có quyền tạo phiếu nhập'
+            });
+        }
+        
+        // Tạo phiếu nhập (server tự động sinh maPN)
+        const result = await pool.request()
+            .input('idNV', sql.Int, idNV)
+            .query(`INSERT INTO PHIEUNHAP (idNV) 
+                    OUTPUT INSERTED.id, INSERTED.maPN, INSERTED.ngayNhap, INSERTED.idNV, INSERTED.tongTien 
+                    VALUES (@idNV)`);
+
+        const phieuNhapData = result.recordset[0];
+
+        res.status(201).json({
+            success: true,
+            message: 'Tạo phiếu nhập thành công',
+            data: phieuNhapData
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi tạo phiếu nhập',
+            error: err.message
+        });
+    }
+});
+
+// PUT
+app.put('/api/phieunhap/:id', async (req, res) => {
+    const { id } = req.params;
+    const { idNV } = req.body;
+    if (!idNV) {
+        return res.status(400).json({
+            success: false,
+            message: 'Thiếu thông tin bắt buộc: idNV'
+        });
+    }
+    try {
+        const pool = await poolPromise;
+        
+        // Kiểm tra quyền nhân viên
+        const nvResult = await pool.request()
+            .input('idNV', sql.Int, idNV)
+            .query(`SELECT nv.id, vt.tenVT
+                    FROM NHANVIEN nv
+                    LEFT JOIN VITRI vt ON nv.idVT = vt.id
+                    WHERE nv.id = @idNV`);
+        
+        if (nvResult.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy nhân viên'
+            });
+        }
+        
+        const tenVT = (nvResult.recordset[0].tenVT || '').toLowerCase();
+        if (!tenVT.includes('quản lý') && !tenVT.includes('quan ly') && 
+            !tenVT.includes('thủ kho') && !tenVT.includes('thu kho') &&
+            !tenVT.includes('warehouse') && !tenVT.includes('manager')) {
+            return res.status(403).json({
+                success: false,
+                message: 'Chỉ quản lý và thủ kho mới có quyền cập nhật phiếu nhập'
+            });
+        }
+        
+        const result = await pool.request()
+            .input('id', sql.Int, id)
+            .input('idNV', sql.Int, idNV)
+            .query('UPDATE PHIEUNHAP SET idNV = @idNV WHERE id = @id');
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy phiếu nhập'
+            });
+        }
+
+        // Lấy lại dữ liệu sau khi cập nhật
+        const updatedResult = await pool.request()
+            .input('id', sql.Int, id)
+            .query(`SELECT p.id, p.maPN, p.ngayNhap, p.idNV, p.tongTien,
+                    nv.maNV, nv.tenNV as tenNhanVien
+                    FROM PHIEUNHAP p
+                    LEFT JOIN NHANVIEN nv ON p.idNV = nv.id
+                    WHERE p.id = @id`);
+
+        res.status(200).json({
+            success: true,
+            message: 'Cập nhật phiếu nhập thành công',
+            data: updatedResult.recordset[0]
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi cập nhật phiếu nhập',
+            error: err.message
+        });
+    }
+});
+
+// DELETE - Xóa phiếu nhập (sẽ trừ lại hàng trong kho thông qua trigger)
+app.delete('/api/phieunhap/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pool = await poolPromise;
+        
+        // Lấy chi tiết trước khi xóa để trừ lại kho
+        const detailResult = await pool.request()
+            .input('idPN', sql.Int, id)
+            .query('SELECT idHang, soluong FROM CHITIET_PHIEUNHAP WHERE idPN = @idPN');
+        
+        // Xóa phiếu nhập (trigger sẽ tự động xóa chi tiết và cập nhật kho)
+        const result = await pool.request()
+            .input('id', sql.Int, id)
+            .query('DELETE FROM PHIEUNHAP WHERE id = @id');
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy phiếu nhập'
+            });
+        }
+        
+        // Trừ lại hàng trong kho (vì trigger chỉ cộng khi insert, không trừ khi delete)
+        for (const detail of detailResult.recordset) {
+            await pool.request()
+                .input('idHang', sql.Int, detail.idHang)
+                .input('soluong', sql.Int, detail.soluong)
+                .query('UPDATE HANGHOA SET soluong = soluong - @soluong WHERE id = @idHang');
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Xóa phiếu nhập thành công'
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi xóa phiếu nhập',
+            error: err.message
+        });
+    }
+});
+
+// ================== CHITIET_PHIEUNHAP APIs ==================
+// GET all
+app.get('/api/chitietphieunhap', async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .query(`SELECT c.idPN, c.idHang, c.soluong, c.dongia, c.thanhTien,
+                    p.maPN, hh.maHang, hh.tenHang
+                    FROM CHITIET_PHIEUNHAP c
+                    LEFT JOIN PHIEUNHAP p ON c.idPN = p.id
+                    LEFT JOIN HANGHOA hh ON c.idHang = hh.id`);
+
+        res.status(200).json({
+            success: true,
+            count: result.recordset.length,
+            data: result.recordset
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi lấy dữ liệu chi tiết phiếu nhập',
+            error: err.message
+        });
+    }
+});
+
+// GET by ID phiếu nhập
+app.get('/api/chitietphieunhap/:idPN', async (req, res) => {
+    const { idPN } = req.params;
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('idPN', sql.Int, idPN)
+            .query(`SELECT c.idPN, c.idHang, c.soluong, c.dongia, c.thanhTien,
+                    p.maPN, hh.maHang, hh.tenHang
+                    FROM CHITIET_PHIEUNHAP c
+                    LEFT JOIN PHIEUNHAP p ON c.idPN = p.id
+                    LEFT JOIN HANGHOA hh ON c.idHang = hh.id
+                    WHERE c.idPN = @idPN`);
+
+        res.status(200).json({
+            success: true,
+            count: result.recordset.length,
+            data: result.recordset
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi lấy dữ liệu chi tiết phiếu nhập',
+            error: err.message
+        });
+    }
+});
+
+// POST
+app.post('/api/chitietphieunhap', async (req, res) => {
+    const { idPN, idHang, soluong, dongia } = req.body;
+    if (idPN === undefined || idHang === undefined || soluong === undefined || dongia === undefined) {
+        return res.status(400).json({
+            success: false,
+            message: 'Thiếu thông tin bắt buộc: idPN, idHang, soluong, dongia'
+        });
+    }
+    if (soluong <= 0) {
+        return res.status(400).json({
+            success: false,
+            message: 'Số lượng phải lớn hơn 0'
+        });
+    }
+    try {
+        const pool = await poolPromise;
+        
+        // Kiểm tra phiếu nhập tồn tại
+        const phieuResult = await pool.request()
+            .input('idPN', sql.Int, idPN)
+            .query('SELECT id FROM PHIEUNHAP WHERE id = @idPN');
+        
+        if (phieuResult.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy phiếu nhập'
+            });
+        }
+        
+        // Kiểm tra hàng hóa tồn tại
+        const hangResult = await pool.request()
+            .input('idHang', sql.Int, idHang)
+            .query('SELECT id, maHang, tenHang FROM HANGHOA WHERE id = @idHang');
+        
+        if (hangResult.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy hàng hóa'
+            });
+        }
+        
+        // Kiểm tra chi tiết đã tồn tại chưa
+        const existingResult = await pool.request()
+            .input('idPN', sql.Int, idPN)
+            .input('idHang', sql.Int, idHang)
+            .query('SELECT soluong FROM CHITIET_PHIEUNHAP WHERE idPN = @idPN AND idHang = @idHang');
+        
+        if (existingResult.recordset.length > 0) {
+            // Nếu đã tồn tại, cập nhật số lượng
+            const oldSoluong = existingResult.recordset[0].soluong;
+            const newSoluong = oldSoluong + soluong;
+            
+            await pool.request()
+                .input('idPN', sql.Int, idPN)
+                .input('idHang', sql.Int, idHang)
+                .input('soluong', sql.Int, newSoluong)
+                .input('dongia', sql.Money, dongia)
+                .query('UPDATE CHITIET_PHIEUNHAP SET soluong = @soluong, dongia = @dongia WHERE idPN = @idPN AND idHang = @idHang');
+            
+            // Cập nhật lại kho (trigger chỉ chạy khi insert)
+            await pool.request()
+                .input('idHang', sql.Int, idHang)
+                .input('soluong', sql.Int, soluong)
+                .query('UPDATE HANGHOA SET soluong = soluong + @soluong, gianhap = @dongia, ngayNhapCuoi = CAST(GETDATE() AS DATE) WHERE id = @idHang');
+        } else {
+            // Thêm mới
+            await pool.request()
+                .input('idPN', sql.Int, idPN)
+                .input('idHang', sql.Int, idHang)
+                .input('soluong', sql.Int, soluong)
+                .input('dongia', sql.Money, dongia)
+                .query('INSERT INTO CHITIET_PHIEUNHAP (idPN, idHang, soluong, dongia) VALUES (@idPN, @idHang, @soluong, @dongia)');
+        }
+
+        // Query lại để lấy dữ liệu vừa insert/update
+        const result = await pool.request()
+            .input('idPN', sql.Int, idPN)
+            .input('idHang', sql.Int, idHang)
+            .query('SELECT idPN, idHang, soluong, dongia, thanhTien FROM CHITIET_PHIEUNHAP WHERE idPN = @idPN AND idHang = @idHang');
+
+        res.status(201).json({
+            success: true,
+            message: 'Thêm chi tiết phiếu nhập thành công',
+            data: result.recordset[0]
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi thêm chi tiết phiếu nhập',
+            error: err.message
+        });
+    }
+});
+
+// PUT
+app.put('/api/chitietphieunhap/:idPN/:idHang', async (req, res) => {
+    const { idPN, idHang } = req.params;
+    const { soluong, dongia } = req.body;
+    if (soluong === undefined || dongia === undefined) {
+        return res.status(400).json({
+            success: false,
+            message: 'Thiếu thông tin soluong hoặc dongia'
+        });
+    }
+    if (soluong <= 0) {
+        return res.status(400).json({
+            success: false,
+            message: 'Số lượng phải lớn hơn 0'
+        });
+    }
+    try {
+        const pool = await poolPromise;
+        
+        // Lấy số lượng cũ
+        const oldResult = await pool.request()
+            .input('idPN', sql.Int, idPN)
+            .input('idHang', sql.Int, idHang)
+            .query('SELECT soluong FROM CHITIET_PHIEUNHAP WHERE idPN = @idPN AND idHang = @idHang');
+        
+        if (oldResult.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy chi tiết phiếu nhập'
+            });
+        }
+        
+        const oldSoluong = oldResult.recordset[0].soluong;
+        const diffSoluong = soluong - oldSoluong;
+        
+        // Cập nhật chi tiết
+        await pool.request()
+            .input('idPN', sql.Int, idPN)
+            .input('idHang', sql.Int, idHang)
+            .input('soluong', sql.Int, soluong)
+            .input('dongia', sql.Money, dongia)
+            .query('UPDATE CHITIET_PHIEUNHAP SET soluong = @soluong, dongia = @dongia WHERE idPN = @idPN AND idHang = @idHang');
+        
+        // Cập nhật kho (cộng thêm nếu tăng, trừ nếu giảm)
+        if (diffSoluong !== 0) {
+            await pool.request()
+                .input('idHang', sql.Int, idHang)
+                .input('soluong', sql.Int, diffSoluong)
+                .input('dongia', sql.Money, dongia)
+                .query('UPDATE HANGHOA SET soluong = soluong + @soluong, gianhap = @dongia, ngayNhapCuoi = CAST(GETDATE() AS DATE) WHERE id = @idHang');
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Cập nhật chi tiết phiếu nhập thành công',
+            data: { idPN: parseInt(idPN), idHang: parseInt(idHang), soluong, dongia }
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi cập nhật chi tiết phiếu nhập',
+            error: err.message
+        });
+    }
+});
+
+// DELETE - Trừ lại hàng trong kho
+app.delete('/api/chitietphieunhap/:idPN/:idHang', async (req, res) => {
+    const { idPN, idHang } = req.params;
+    try {
+        const pool = await poolPromise;
+        
+        // Lấy số lượng trước khi xóa
+        const detailResult = await pool.request()
+            .input('idPN', sql.Int, idPN)
+            .input('idHang', sql.Int, idHang)
+            .query('SELECT soluong FROM CHITIET_PHIEUNHAP WHERE idPN = @idPN AND idHang = @idHang');
+        
+        if (detailResult.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy chi tiết phiếu nhập'
+            });
+        }
+        
+        const soluong = detailResult.recordset[0].soluong;
+        
+        // Xóa chi tiết
+        const result = await pool.request()
+            .input('idPN', sql.Int, idPN)
+            .input('idHang', sql.Int, idHang)
+            .query('DELETE FROM CHITIET_PHIEUNHAP WHERE idPN = @idPN AND idHang = @idHang');
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy chi tiết phiếu nhập'
+            });
+        }
+
+        // Trừ lại hàng trong kho
+        await pool.request()
+            .input('idHang', sql.Int, idHang)
+            .input('soluong', sql.Int, soluong)
+            .query('UPDATE HANGHOA SET soluong = soluong - @soluong WHERE id = @idHang');
+
+        res.status(200).json({
+            success: true,
+            message: 'Xóa chi tiết phiếu nhập thành công'
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi xóa chi tiết phiếu nhập',
+            error: err.message
+        });
+    }
+});
+
 // Helper function to recalculate invoice total and apply discount
 async function recalculateInvoiceTotal(idHD) {
     const pool = await poolPromise;

@@ -51,7 +51,7 @@ const pages = {
             { name: 'giaban', label: 'Giá Bán', type: 'number', required: false },
             { name: 'tonKhoToiThieu', label: 'Tồn Kho Tối Thiểu', type: 'number', required: false }
         ],
-        displayFields: ['id', 'maHang', 'tenHang', 'tenPLSP', 'soluong', 'gianhap', 'giaban', 'tonKhoToiThieu']
+        displayFields: ['id', 'maHang', 'tenHang', 'tenPLSP', 'soluong', 'gianhap', 'giaban', 'tonKhoToiThieu', 'ngayNhapCuoi']
     },
     hoadon: {
         title: 'Quản Lý Hóa Đơn',
@@ -60,9 +60,10 @@ const pages = {
             { name: 'idNV', label: 'Nhân Viên', type: 'select', required: true },
             { name: 'idKH', label: 'Khách Hàng', type: 'select', required: true },
             { name: 'idKM', label: 'Khuyến Mãi', type: 'select', required: false },
-            { name: 'loaiGiaoDich', label: 'Loại Giao Dịch', type: 'text', required: false }
+            { name: 'loaiGiaoDich', label: 'Loại Giao Dịch', type: 'text', required: false },
+            { name: 'diemDaDung', label: 'Điểm Đã Dùng', type: 'number', required: false }
         ],
-        displayFields: ['id', 'maHD', 'tenNhanVien', 'tenKhachHang', 'ngayLap', 'tongTien', 'loaiGiaoDich'],
+        displayFields: ['id', 'maHD', 'tenNhanVien', 'tenKhachHang', 'ngayLap', 'tongTien', 'diemDaDung', 'loaiGiaoDich'],
         customActions: true
     },
     chitiethd: {
@@ -97,6 +98,16 @@ const pages = {
             { name: 'tenPLSP', label: 'Tên PLSP', type: 'text', required: true }
         ],
         displayFields: ['id', 'maPLSP', 'tenPLSP']
+    },
+    phieunhap: {
+        title: 'Quản Lý Phiếu Nhập Hàng',
+        api: 'phieunhap',
+        fields: [
+            { name: 'idNV', label: 'Nhân Viên', type: 'select', required: true },
+            { name: 'ngayNhap', label: 'Ngày Nhập', type: 'date', required: false }
+        ],
+        displayFields: ['id', 'maPN', 'ngayNhap', 'tenNhanVien', 'tongTien'],
+        customActions: true
     }
 };
 
