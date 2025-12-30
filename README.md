@@ -101,7 +101,7 @@ CREATE TABLE HANGHOA(
 CREATE TABLE HOADON(
     id INT IDENTITY(1,1) PRIMARY KEY,
     maHD AS ('HD' + RIGHT('000' + CAST(id AS VARCHAR(5)), 5)) PERSISTED,
-    diemDaDung INT DEFAULT 0
+    diemDaDung INT DEFAULT 0,
     ngayLap DATETIME DEFAULT GETDATE(),
     idNV INT NOT NULL, -- Liên kết id nhân viên
     idKH INT NOT NULL, -- Liên kết id khách hàng

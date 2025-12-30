@@ -3232,11 +3232,13 @@
         }
 
         // Tạo phiếu nhập mới - hiển thị trực tiếp trên trang
-        async function renderCreatePhieuNhap() {
+        async function renderCreatePhieuNhap(keepCart = false) {
             const content = document.getElementById('page-content');
-            // Reset cart và danh sách hàng hóa mới khi vào lại trang tạo phiếu nhập
-            phieuNhapCart = [];
-            newProductsList = [];
+            // Chỉ reset cart nếu không phải quay lại từ trang thêm hàng hóa mới
+            if (!keepCart) {
+                phieuNhapCart = [];
+                newProductsList = [];
+            }
             
             content.innerHTML = `
                 <div class="page-header">
@@ -3266,7 +3268,10 @@
 
             await loadProducts();
             renderPhieuNhapProducts(products);
-            renderPhieuNhapCart();
+            // Đảm bảo DOM đã được render trước khi gọi renderPhieuNhapCart
+            setTimeout(() => {
+                renderPhieuNhapCart();
+            }, 100);
         }
         
         // View thêm nhiều hàng hóa mới vào phiếu nhập (chưa tạo trong database)
@@ -3411,7 +3416,10 @@
         
         function updateProductData(rowId) {
             const product = newProductsList.find(p => p.id === rowId);
-            if (!product) return;
+            if (!product) {
+                console.warn('Product not found for rowId:', rowId);
+                return;
+            }
             
             const inputs = document.querySelectorAll(`[data-id="${rowId}"]`);
             inputs.forEach(input => {
@@ -3419,12 +3427,15 @@
                 if (field) {
                     if (input.type === 'number') {
                         product[field] = parseFloat(input.value) || 0;
+                    } else if (input.tagName === 'SELECT') {
+                        product[field] = input.value; // Giữ nguyên string cho select
                     } else {
-                        product[field] = input.value;
+                        product[field] = input.value.trim();
                     }
                 }
             });
             
+            console.log('Updated product data:', product);
             updateSaveButton();
         }
         
@@ -3447,12 +3458,29 @@
         
         // Thêm hàng hóa mới vào giỏ hàng phiếu nhập (chưa tạo trong database)
         async function addNewProductsToPhieuNhap() {
+            // Cập nhật lại dữ liệu từ form trước khi filter (đảm bảo dữ liệu mới nhất)
+            newProductsList.forEach(product => {
+                const inputs = document.querySelectorAll(`[data-id="${product.id}"]`);
+                inputs.forEach(input => {
+                    const field = input.dataset.field;
+                    if (field) {
+                        if (input.type === 'number') {
+                            product[field] = parseFloat(input.value) || 0;
+                        } else if (input.tagName === 'SELECT') {
+                            product[field] = input.value;
+                        } else {
+                            product[field] = input.value.trim();
+                        }
+                    }
+                });
+            });
+            
             const validProducts = newProductsList.filter(p => 
-                p.tenHang && p.idPLSP && p.gianhap > 0 && p.giaban > 0
+                p.tenHang && p.tenHang.trim() && p.idPLSP && parseInt(p.idPLSP) > 0 && p.gianhap > 0 && p.giaban > 0
             );
             
             if (validProducts.length === 0) {
-                showToast('Không có hàng hóa hợp lệ để thêm', 'error');
+                showToast('Không có hàng hóa hợp lệ để thêm. Vui lòng kiểm tra lại: Tên hàng, Phân loại, Giá nhập, Giá bán', 'error');
                 return;
             }
             
@@ -3483,8 +3511,9 @@
             showToast(`Đã thêm ${validProducts.length} hàng hóa mới vào phiếu nhập`, 'success');
             
             // Quay lại trang tạo phiếu nhập và reload danh sách sản phẩm
+            // Giữ lại cart khi quay lại từ trang thêm hàng hóa mới
             await loadProducts(); // Reload để cập nhật danh sách
-            renderCreatePhieuNhap();
+            renderCreatePhieuNhap(true); // true = keepCart
         }
 
         async function loadPhieuNhap() {
@@ -3773,7 +3802,12 @@
             const itemsContainer = document.getElementById('phieunhap-cart-items');
             const summaryContainer = document.getElementById('phieunhap-cart-summary');
 
-            if (!itemsContainer || !summaryContainer) return;
+            if (!itemsContainer || !summaryContainer) {
+                console.warn('Cart containers not found, retrying...');
+                // Retry sau 100ms nếu element chưa tồn tại
+                setTimeout(() => renderPhieuNhapCart(), 100);
+                return;
+            }
 
             if (phieuNhapCart.length === 0) {
                 itemsContainer.innerHTML = `<div class="cart-empty"><p>Chưa có sản phẩm</p></div>`;
@@ -3784,18 +3818,21 @@
             itemsContainer.innerHTML = phieuNhapCart.map(item => {
                 const itemKey = item.isNew ? item.tempId : item.maHang;
                 const isNewBadge = item.isNew ? '<span style="background: #ff9800; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px; margin-left: 5px;">MỚI</span>' : '';
+                // Escape các ký tự đặc biệt trong tên sản phẩm và key
+                const safeName = (item.name || '').replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+                const safeKey = (itemKey || '').replace(/'/g, "&#39;").replace(/"/g, "&quot;");
                 return `
                 <div class="cart-item">
                     <div class="cart-item-info">
-                        <div class="cart-item-name">${item.name} ${isNewBadge}</div>
+                        <div class="cart-item-name">${safeName} ${isNewBadge}</div>
                         <div class="cart-item-price">${formatCurrency(item.price)}</div>
                     </div>
                     <div class="cart-item-qty">
-                        <button class="qty-btn minus" onclick="updatePhieuNhapCartQty('${itemKey}', -1)">−</button>
+                        <button class="qty-btn minus" onclick="updatePhieuNhapCartQty('${safeKey}', -1)">−</button>
                         <span class="qty-value">${item.quantity}</span>
-                        <button class="qty-btn plus" onclick="updatePhieuNhapCartQty('${itemKey}', 1)">+</button>
+                        <button class="qty-btn plus" onclick="updatePhieuNhapCartQty('${safeKey}', 1)">+</button>
                     </div>
-                    <button class="cart-item-remove" onclick="removeFromPhieuNhapCart('${itemKey}')">✕</button>
+                    <button class="cart-item-remove" onclick="removeFromPhieuNhapCart('${safeKey}')">✕</button>
                 </div>
             `;
             }).join('');
