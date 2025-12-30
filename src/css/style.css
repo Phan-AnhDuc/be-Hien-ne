@@ -614,20 +614,18 @@ tbody tr:last-child td {
 
 /* Logout button */
 .logout-btn {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 12px 20px;
+    margin: 20px 15px;
+    padding: 12px;
     background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
     color: white;
     border: none;
     border-radius: 50px;
     cursor: pointer;
-    z-index: 999;
-    font-weight: 700;
     font-size: 14px;
-    box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
+    font-weight: 700;
+    width: calc(100% - 30px);
     transition: all 0.3s;
+    box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
 }
 
 .logout-btn:hover {
