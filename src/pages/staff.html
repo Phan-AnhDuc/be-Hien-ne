@@ -3205,6 +3205,10 @@
         }
 
         async function renderPhieuNhap() {
+            // Clear cart và danh sách hàng hóa mới khi quay lại trang danh sách
+            phieuNhapCart = [];
+            newProductsList = [];
+            
             const hasPermission = canCreatePhieuNhap();
             const content = document.getElementById('page-content');
             content.innerHTML = `
@@ -3239,7 +3243,9 @@
             }
             
             const content = document.getElementById('page-content');
-            // KHÔNG reset cart - giữ lại hàng hóa đã thêm (bao gồm hàng hóa mới)
+            // Reset cart và danh sách hàng hóa mới khi vào lại trang tạo phiếu nhập
+            phieuNhapCart = [];
+            newProductsList = [];
             
             content.innerHTML = `
                 <div class="page-header">
@@ -3959,6 +3965,10 @@
                 // Reload danh sách phiếu nhập và quay lại trang danh sách
                 await loadProducts(); // Reload để cập nhật số lượng
                 showToast(`Tạo phiếu nhập ${maPN} thành công! ${newProducts.length > 0 ? `Đã tạo ${newProducts.length} hàng hóa mới.` : ''}`, 'success');
+                
+                // Clear dữ liệu cart và danh sách hàng hóa mới
+                phieuNhapCart = [];
+                newProductsList = [];
                 
                 // Quay lại trang danh sách phiếu nhập
                 renderPhieuNhap();
