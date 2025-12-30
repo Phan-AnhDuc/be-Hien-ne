@@ -3502,7 +3502,7 @@
                         idPLSP: parseInt(product.idPLSP),
                         gianhap: product.gianhap,
                         giaban: product.giaban,
-                        soluong: product.soluong || 0,
+                        soluong: 0, // Set = 0 vì trigger sẽ cộng số lượng khi tạo chi tiết phiếu nhập
                         tonKhoToiThieu: product.tonKhoToiThieu || 10
                     }
                 });
