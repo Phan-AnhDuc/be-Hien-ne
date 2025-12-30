@@ -3209,16 +3209,14 @@
             phieuNhapCart = [];
             newProductsList = [];
             
-            const hasPermission = canCreatePhieuNhap();
             const content = document.getElementById('page-content');
             content.innerHTML = `
                 <div class="page-header">
                     <div>
                         <h2>Quản Lý Phiếu Nhập Hàng</h2>
                         <p>Quản lý các phiếu nhập hàng vào kho</p>
-                        ${!hasPermission ? '<p style="color: #dc2626; font-size: 12px; margin-top: 5px;">⚠️ Chỉ quản lý và thủ kho mới có quyền tạo phiếu nhập</p>' : ''}
                     </div>
-                    ${hasPermission ? '<button class="btn btn-success" onclick="renderCreatePhieuNhap()">➕ Tạo Phiếu Nhập Mới</button>' : ''}
+                    <button class="btn btn-success" onclick="renderCreatePhieuNhap()">➕ Tạo Phiếu Nhập Mới</button>
                 </div>
                 <div class="search-box">
                     <input type="text" class="search-input" id="search-phieunhap" placeholder="Tìm theo mã phiếu, nhân viên..." oninput="filterPhieuNhap()">
@@ -3235,13 +3233,6 @@
 
         // Tạo phiếu nhập mới - hiển thị trực tiếp trên trang
         async function renderCreatePhieuNhap() {
-            // Kiểm tra quyền trước khi cho phép tạo
-            if (!canCreatePhieuNhap()) {
-                showToast('Bạn không có quyền tạo phiếu nhập. Chỉ quản lý và thủ kho mới có quyền này.', 'error');
-                renderPhieuNhap(); // Quay lại trang danh sách
-                return;
-            }
-            
             const content = document.getElementById('page-content');
             // Reset cart và danh sách hàng hóa mới khi vào lại trang tạo phiếu nhập
             phieuNhapCart = [];
