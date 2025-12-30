@@ -1865,14 +1865,14 @@ app.post('/api/phieunhap', async (req, res) => {
         const tenVT = (nv.tenVT || '').toLowerCase();
         
         // Chỉ cho phép quản lý và thủ kho
-        if (!tenVT.includes('quản lý') && !tenVT.includes('quan ly') && 
-            !tenVT.includes('thủ kho') && !tenVT.includes('thu kho') &&
-            !tenVT.includes('warehouse') && !tenVT.includes('manager')) {
-            return res.status(403).json({
-                success: false,
-                message: 'Chỉ quản lý và thủ kho mới có quyền tạo phiếu nhập'
-            });
-        }
+        // if (!tenVT.includes('quản lý') && !tenVT.includes('quan ly') && 
+        //     !tenVT.includes('thủ kho') && !tenVT.includes('thu kho') &&
+        //     !tenVT.includes('warehouse') && !tenVT.includes('manager')) {
+        //     return res.status(403).json({
+        //         success: false,
+        //         message: 'Chỉ quản lý và thủ kho mới có quyền tạo phiếu nhập'
+        //     });
+        // }
         
         // Tạo phiếu nhập (server tự động sinh maPN)
         const result = await pool.request()
