@@ -3215,7 +3215,7 @@ function openNhacungcapModal(ncc = null) {
                 })() : ''}</textarea>
             </div>
             <div class="form-group">
-                <label>Default Tồn Kho (Mặc định: 10)</label>
+                <label>Tồn Kho Tối Thiểu (Mặc định: 10)</label>
                 <input type="number" id="ncc-defaultTonKho" value="${ncc ? (ncc.defaultTonKho || 10) : 10}" min="0" required>
             </div>
             <div class="form-group">

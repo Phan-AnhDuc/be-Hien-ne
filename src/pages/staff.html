@@ -3402,7 +3402,7 @@
             });
         }
         
-        // 2. Mua 1 hàng bán chạy tặng 1 phụ kiện
+        // 2. Mua 1 hàng bán chạy tặng 1 TRI ÂN KHÁCH HÀNG
         function applyBestSellerGift() {
             // Tìm sản phẩm bán chạy trong cart
             const bestSellersInCart = cart.filter(item => {
@@ -3414,8 +3414,8 @@
             const availableGifts = products.filter(p => {
                 // Phụ kiện: tên phân loại chứa "phụ kiện", "phu kien", "accessory"
                 const tenPLSP = (p.tenPLSP || '').toLowerCase();
-                const isPhuKien = tenPLSP.includes('phụ kiện') || tenPLSP.includes('phu kien') || 
-                                  tenPLSP.includes('accessory') || tenPLSP.includes('phụ kiện');
+                const isPhuKien = tenPLSP.includes('TRI ÂN KHÁCH HÀNG') || tenPLSP.includes('TRI ÂN KHÁCH HÀNG') || 
+                                  tenPLSP.includes('accessory') || tenPLSP.includes('TRI ÂN KHÁCH HÀNG');
                 return isPhuKien && slowMovingProductsCache.includes(p.id) && p.soluong > 0;
             });
             
@@ -3448,7 +3448,7 @@
                             soluong: giftProduct.soluong,
                             autoDiscounts: [{
                                 type: 'gift',
-                                label: 'Tặng kèm',
+                                label: 'Tri ân khách hàng',
                                 fromProductId: bestSeller.id,
                                 fromProductName: bestSeller.name
                             }]
