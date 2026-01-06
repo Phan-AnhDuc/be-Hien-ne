@@ -5539,14 +5539,8 @@
                     </thead>
                     <tbody>
                         ${lichSuFilteredData.map(item => {
-                            const thoiGian = new Date(item.thoiGian).toLocaleString('vi-VN', {
-                                year: 'numeric',
-                                month: '2-digit',
-                                day: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit'
-                            });
+                            // Sử dụng formatDateTime để hiển thị đúng thời gian từ database (có cả giây)
+                            const thoiGian = formatDateTime(item.thoiGian);
                             
                             const loaiIcon = {
                                 'Tạo hóa đơn': '✅',
@@ -7628,6 +7622,47 @@
                 const date = new Date(dateStrClean);
                 return date.toLocaleDateString('vi-VN');
             }
+        }
+
+        // Format datetime với đầy đủ giờ:phút:giây (dùng cho lịch sử hoạt động)
+        function formatDateTime(dateStr) {
+            if (!dateStr) return '-';
+            
+            const dateStrClean = String(dateStr).trim();
+            
+            // Xử lý ISO format với Z (UTC): "2026-01-06T22:27:56.970Z"
+            if (dateStrClean.includes('T') && dateStrClean.endsWith('Z')) {
+                const isoMatch = dateStrClean.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?Z$/);
+                if (isoMatch) {
+                    const [, year, month, day, hour, minute, second] = isoMatch.map(Number);
+                    // Format trực tiếp từ UTC components để giữ nguyên giờ
+                    const dayStr = String(day).padStart(2, '0');
+                    const monthStr = String(month).padStart(2, '0');
+                    const hourStr = String(hour).padStart(2, '0');
+                    const minuteStr = String(minute).padStart(2, '0');
+                    const secondStr = String(second || 0).padStart(2, '0');
+                    return `${dayStr}/${monthStr}/${year} ${hourStr}:${minuteStr}:${secondStr}`;
+                }
+            } else if (dateStrClean.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/)) {
+                // SQL Server format: "YYYY-MM-DD HH:mm:ss"
+                const [datePart, timePart] = dateStrClean.split(' ');
+                const [year, month, day] = datePart.split('-').map(Number);
+                const [hour, minute, second] = timePart.split(':').map(Number);
+                const dayStr = String(day).padStart(2, '0');
+                const monthStr = String(month).padStart(2, '0');
+                const hourStr = String(hour).padStart(2, '0');
+                const minuteStr = String(minute).padStart(2, '0');
+                const secondStr = String(second || 0).padStart(2, '0');
+                return `${dayStr}/${monthStr}/${year} ${hourStr}:${minuteStr}:${secondStr}`;
+            }
+            
+            // Fallback: dùng Date object
+            const date = new Date(dateStrClean);
+            return date.toLocaleDateString('vi-VN') + ' ' + date.toLocaleTimeString('vi-VN', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit'
+            });
         }
 
         function getStockClass(qty) {
