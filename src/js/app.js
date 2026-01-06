@@ -82,7 +82,7 @@ async function loadPage() {
                 </button>
             </div>
             <div style="display: flex; gap: 10px;">
-                ${currentPage !== 'hoadon' ? `
+                ${currentPage !== 'hoadon' && currentPage !== 'hanghoa' ? `
                 <button class="btn btn-primary" onclick="openAddModal()">
                     ➕ Thêm Mới
                 </button>
@@ -172,6 +172,10 @@ function renderTable(data) {
             if (field === 'diemDaDung' && value !== null && value !== undefined) {
                 value = parseInt(value) || 0;
             }
+            // Hiển thị nhà cung cấp cho phiếu nhập
+            if (field === 'tenNhaCungCap' && (value === null || value === undefined || value === '')) {
+                value = '-';
+            }
             html += `<td>${value}</td>`;
         });
         html += `<td class="action-btns">`;
@@ -180,7 +184,7 @@ function renderTable(data) {
         if (currentPage === 'phieunhap') {
             html += `<button class="btn btn-primary btn-sm" onclick="viewPhieuNhapDetail(${item.id}, '${item.maPN}')">👁️ Xem</button>`;
             html += `<button class="btn btn-warning btn-sm" onclick="editPhieuNhap(${item.id}, '${item.maPN}')">✏️ Sửa</button>`;
-            html += `<button class="btn btn-danger btn-sm" onclick="deleteItem(${index})">🗑️ Xóa</button>`;
+            // Không có nút xóa cho phiếu nhập
         } else if (currentPage === 'hoadon') {
             // Hóa đơn: chỉ có nút xuất PDF/Excel, không có Sửa/Xóa
             html += `<button class="btn btn-secondary btn-sm" onclick="exportPDF('${item.maHD}')">📄 PDF</button>`;
@@ -497,8 +501,8 @@ async function saveData(event) {
                 const keys = page.compositeKey.map(k => item[k]).join('/');
                 endpoint += `/${keys}`;
             } else {
-                // Use id for phieunhap, otherwise use ma field
-                if (currentPage === 'phieunhap') {
+                // Use id for phieunhap and khuyenmai, otherwise use ma field
+                if (currentPage === 'phieunhap' || currentPage === 'khuyenmai') {
                     endpoint += `/${item.id}`;
                 } else {
                     const keyField = page.fields.find(f => f.name.includes('ma') && f.required);
@@ -538,8 +542,8 @@ async function deleteItem(index) {
             const keys = page.compositeKey.map(k => item[k]).join('/');
             endpoint += `/${keys}`;
         } else {
-            // Use id for phieunhap, otherwise use ma field
-            if (currentPage === 'phieunhap') {
+            // Use id for phieunhap and khuyenmai, otherwise use ma field
+            if (currentPage === 'phieunhap' || currentPage === 'khuyenmai') {
                 endpoint += `/${item.id}`;
             } else {
                 const keyField = page.fields.find(f => f.name.includes('ma') && f.required);
@@ -711,11 +715,20 @@ async function viewPhieuNhapDetail(id, maPN) {
             <div style="padding: 20px;">
                 <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                     <h4 style="margin: 0; color: #e65100;">📥 Phiếu Nhập: ${maPN}</h4>
-                    <p style="margin: 5px 0 0 0; color: #666;">
-                        Ngày nhập: ${formatDate(phieuNhap.ngayNhap)}<br>
-                        Nhân viên: ${phieuNhap.tenNhanVien || phieuNhap.maNV || 'N/A'}
-                        ${phieuNhap.tenNhaCungCap ? `<br>Nhà cung cấp: ${phieuNhap.tenNhaCungCap} (${phieuNhap.maNCC || ''})` : ''}
-                    </p>
+                    <div style="margin-top: 10px; color: #666; line-height: 1.8;">
+                        <div style="margin-bottom: 5px;">
+                            <strong>📅 Ngày nhập:</strong> ${formatDate(phieuNhap.ngayNhap)}
+                        </div>
+                        <div style="margin-bottom: 5px;">
+                            <strong>👤 Nhân viên:</strong> ${phieuNhap.tenNhanVien || phieuNhap.maNV || 'N/A'}
+                        </div>
+                        <div style="margin-bottom: 5px;">
+                            <strong>🏢 Nhà cung cấp:</strong> 
+                            ${phieuNhap.tenNhaCungCap ? 
+                                `<span style="color: #ff9800; font-weight: 600;">${phieuNhap.tenNhaCungCap}</span> <span style="color: #999;">(${phieuNhap.maNCC || ''})</span>` : 
+                                '<span style="color: #999; font-style: italic;">Không có</span>'}
+                        </div>
+                    </div>
                 </div>
                 <div style="margin-bottom: 20px;">
                     <h4 style="color: #1a2b48; margin-bottom: 10px;">Danh Sách Hàng Hóa</h4>
@@ -1187,6 +1200,21 @@ function updatePhieuNhapCartQtyInput(key, value) {
         return;
     }
     
+    // Validate tồn kho tối thiểu nếu có nhà cung cấp
+    const selectedNCCValue = document.getElementById('phieunhap-nhacungcap-select')?.value || '';
+    if (selectedNCCValue) {
+        const selectedNCC = phieuNhapNhacungcap.find(ncc => ncc.id === parseInt(selectedNCCValue));
+        if (selectedNCC && selectedNCC.defaultTonKho) {
+            const minQty = selectedNCC.defaultTonKho;
+            if (qty < minQty) {
+                item.quantity = minQty;
+                renderPhieuNhapCart();
+                showAlert(`Số lượng tối thiểu từ nhà cung cấp ${selectedNCC.tenNCC} là ${minQty}`, 'warning');
+                return;
+            }
+        }
+    }
+    
     item.quantity = qty;
     renderPhieuNhapCart();
 }
@@ -1201,7 +1229,25 @@ function validatePhieuNhapCartQty(key, input) {
         input.value = 1;
         item.quantity = 1;
     } else {
-        item.quantity = qty;
+        // Validate tồn kho tối thiểu nếu có nhà cung cấp
+        const selectedNCCValue = document.getElementById('phieunhap-nhacungcap-select')?.value || '';
+        if (selectedNCCValue) {
+            const selectedNCC = phieuNhapNhacungcap.find(ncc => ncc.id === parseInt(selectedNCCValue));
+            if (selectedNCC && selectedNCC.defaultTonKho) {
+                const minQty = selectedNCC.defaultTonKho;
+                if (qty < minQty) {
+                    input.value = minQty;
+                    item.quantity = minQty;
+                    showAlert(`Số lượng tối thiểu từ nhà cung cấp ${selectedNCC.tenNCC} là ${minQty}`, 'warning');
+                } else {
+                    item.quantity = qty;
+                }
+            } else {
+                item.quantity = qty;
+            }
+        } else {
+            item.quantity = qty;
+        }
     }
 
     renderPhieuNhapCart();
@@ -1379,6 +1425,20 @@ async function createPhieuNhap() {
         // Lấy nhà cung cấp (nếu có)
         const selectedNCCValue = document.getElementById('phieunhap-nhacungcap-select')?.value || '';
         const idNCC = selectedNCCValue ? parseInt(selectedNCCValue) : null;
+        
+        // Validate tồn kho tối thiểu nếu có nhà cung cấp
+        if (idNCC) {
+            const selectedNCC = phieuNhapNhacungcap.find(ncc => ncc.id === idNCC);
+            if (selectedNCC && selectedNCC.defaultTonKho) {
+                const minQty = selectedNCC.defaultTonKho;
+                const invalidItems = phieuNhapCart.filter(item => item.quantity < minQty);
+                if (invalidItems.length > 0) {
+                    const itemNames = invalidItems.map(item => item.name).join(', ');
+                    showAlert(`Số lượng tối thiểu từ nhà cung cấp ${selectedNCC.tenNCC} là ${minQty}. Vui lòng kiểm tra: ${itemNames}`, 'error');
+                    return;
+                }
+            }
+        }
         
         // Tạo phiếu nhập
         const phieuNhapRes = await apiPost('phieunhap', { 
@@ -1674,7 +1734,7 @@ async function addNewProductsToPhieuNhap() {
                 idPLSP: parseInt(product.idPLSP),
                 gianhap: product.gianhap,
                 giaban: product.giaban,
-                soluong: product.soluong || 0,
+                soluong: 0, // Đặt = 0 vì trigger sẽ tự động cộng khi tạo chi tiết phiếu nhập
                 tonKhoToiThieu: product.tonKhoToiThieu || 10
             }
         });

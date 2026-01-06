@@ -795,6 +795,20 @@ app.delete('/api/khuyenmai/:id', async (req, res) => {
     const { id } = req.params;
     try {
         const pool = await poolPromise;
+        
+        // Kiểm tra xem khuyến mãi có đang được sử dụng trong hóa đơn không
+        const checkUsage = await pool.request()
+            .input('id', sql.Int, id)
+            .query('SELECT COUNT(*) as count FROM HOADON WHERE idKM = @id');
+        
+        if (checkUsage.recordset[0].count > 0) {
+            // Nếu đang được sử dụng, set NULL cho các hóa đơn thay vì xóa
+            await pool.request()
+                .input('id', sql.Int, id)
+                .query('UPDATE HOADON SET idKM = NULL WHERE idKM = @id');
+        }
+        
+        // Xóa khuyến mãi
         const result = await pool.request()
             .input('id', sql.Int, id)
             .query('DELETE FROM KHUYENMAI WHERE id = @id');
@@ -1952,10 +1966,12 @@ app.get('/api/phieunhap/:id', async (req, res) => {
         const pool = await poolPromise;
         const result = await pool.request()
             .input('id', sql.Int, id)
-            .query(`SELECT p.id, p.maPN, p.ngayNhap, p.idNV, p.tongTien,
-                    nv.maNV, nv.tenNV as tenNhanVien
+            .query(`SELECT p.id, p.maPN, p.ngayNhap, p.idNV, p.idNCC, p.tongTien,
+                    nv.maNV, nv.tenNV as tenNhanVien,
+                    ncc.maNCC, ncc.tenNCC as tenNhaCungCap
                     FROM PHIEUNHAP p
                     LEFT JOIN NHANVIEN nv ON p.idNV = nv.id
+                    LEFT JOIN NHACUNGCAP ncc ON p.idNCC = ncc.id
                     WHERE p.id = @id`);
 
         if (result.recordset.length === 0) {
