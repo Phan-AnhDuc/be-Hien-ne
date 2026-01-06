@@ -3148,7 +3148,7 @@
             if (lowStockItems.length > 0) {
                 html += `
                     <div class="stock-warning-list" style="margin-top: 20px;">
-                        <h4>⚠️ Cảnh Báo Sắp Hết Hàng (dưới 20)</h4>
+                        <h4>⚠️ Cảnh Báo Sắp Hết Hàng (dưới 10)</h4>
                         ${lowStockItems.map(p => `
                             <div class="stock-warning-item">
                                 <span><strong>${p.tenHang}</strong> (${p.maHang})</span>
@@ -7740,19 +7740,19 @@
 
         function getStockClass(qty) {
             if (qty <= 0) return 'stock-danger';
-            if (qty < 20) return 'stock-warning';
+            if (qty < 10) return 'stock-warning';
             return 'stock-ok';
         }
 
         function getStockBadge(qty) {
             if (qty <= 0) return 'badge-danger';
-            if (qty < 20) return 'badge-warning';
+            if (qty < 10) return 'badge-warning';
             return 'badge-success';
         }
 
         function getStockText(qty) {
             if (qty <= 0) return 'Hết hàng';
-            if (qty < 20) return 'Sắp hết';
+            if (qty <= 10) return 'Sắp hết';
             return 'Còn hàng';
         }
 
