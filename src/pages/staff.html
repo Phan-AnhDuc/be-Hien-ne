@@ -4232,6 +4232,7 @@
 
                 document.getElementById('success-message').innerHTML = `
                     <strong>Mã hóa đơn: ${maHD}</strong><br>
+                    Ngày lập: ${formatDate(invoiceResult.data.ngayLap)}<br>
                     Nhân viên: ${selectedNV.tenNV || selectedNVValue}<br>
                     ${selectedCustomer ? `Khách hàng: ${selectedCustomer.tenKH}<br>` : ''}
                     <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
@@ -7550,8 +7551,56 @@
 
         function formatDate(dateStr) {
             if (!dateStr) return '-';
-            const date = new Date(dateStr);
-            return date.toLocaleDateString('vi-VN');
+            
+            const dateStrClean = String(dateStr).trim();
+            
+            // Kiểm tra xem có phần giờ không
+            const dateStrLower = dateStrClean.toLowerCase();
+            const hasTime = dateStrLower.includes('t') || 
+                           (dateStrLower.includes(' ') && dateStrLower.match(/\d{1,2}:\d{2}/)) ||
+                           dateStrClean.length > 10; // DATE chỉ có 10 ký tự (YYYY-MM-DD)
+            
+            if (hasTime) {
+                let date;
+                
+                // Xử lý ISO format với Z (UTC): "2026-01-06T22:27:56.970Z"
+                // Parse trực tiếp từ string để giữ nguyên giờ UTC, không convert timezone
+                if (dateStrClean.includes('T') && dateStrClean.endsWith('Z')) {
+                    // ISO UTC format: "2026-01-06T22:27:56.970Z"
+                    // Extract date và time từ string, parse trực tiếp không qua Date constructor để tránh timezone conversion
+                    const isoMatch = dateStrClean.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?Z$/);
+                    if (isoMatch) {
+                        const [, year, month, day, hour, minute, second] = isoMatch.map(Number);
+                        // Tạo Date object với UTC time, nhưng hiển thị như local (giữ nguyên giờ)
+                        date = new Date(Date.UTC(year, month - 1, day, hour, minute, second || 0));
+                        // Format trực tiếp từ UTC components để giữ nguyên giờ
+                        const dayStr = String(day).padStart(2, '0');
+                        const monthStr = String(month).padStart(2, '0');
+                        const hourStr = String(hour).padStart(2, '0');
+                        const minuteStr = String(minute).padStart(2, '0');
+                        return `${dayStr}/${monthStr}/${year} ${hourStr}:${minuteStr}`;
+                    }
+                } else if (dateStrClean.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/)) {
+                    // SQL Server format: "YYYY-MM-DD HH:mm:ss"
+                    // Parse trực tiếp để giữ nguyên giờ
+                    const [datePart, timePart] = dateStrClean.split(' ');
+                    const [year, month, day] = datePart.split('-').map(Number);
+                    const [hour, minute, second] = timePart.split(':').map(Number);
+                    date = new Date(year, month - 1, day, hour, minute, second || 0);
+                } else if (dateStrClean.includes('T')) {
+                    // ISO format khác (không có Z)
+                    date = new Date(dateStrClean);
+                } else {
+                    date = new Date(dateStrClean);
+                }
+                
+                // Hiển thị cả ngày và giờ
+                return date.toLocaleDateString('vi-VN') + ' ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+            } else {
+                // DATE: chỉ hiển thị ngày
+                const date = new Date(dateStrClean);
+                return date.toLocaleDateString('vi-VN');
+            }
         }
 
         function getStockClass(qty) {
