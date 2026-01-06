@@ -4606,6 +4606,30 @@
             const filterMonth = document.getElementById('filter-month')?.value || '';
             const filterYear = document.getElementById('filter-year')?.value || '';
             
+            // Helper function để parse ngày từ ISO string (giữ nguyên UTC, không convert timezone)
+            function parseOrderDate(dateStr) {
+                if (!dateStr) return null;
+                const dateStrClean = String(dateStr).trim();
+                
+                // Xử lý ISO format với Z (UTC): "2026-01-06T22:27:56.970Z"
+                if (dateStrClean.includes('T') && dateStrClean.endsWith('Z')) {
+                    const isoMatch = dateStrClean.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?Z$/);
+                    if (isoMatch) {
+                        const [, year, month, day] = isoMatch.map(Number);
+                        // Trả về Date object với UTC time, nhưng chỉ dùng để so sánh ngày/tháng/năm
+                        return { year, month, day };
+                    }
+                }
+                
+                // Fallback: parse như bình thường
+                const date = new Date(dateStrClean);
+                return {
+                    year: date.getFullYear(),
+                    month: date.getMonth() + 1,
+                    day: date.getDate()
+                };
+            }
+            
             let filtered = ordersList.filter(o => {
                 // Filter by keyword
                 const nv = nhanvienList.find(n => n.maNV === o.maNV);
@@ -4624,26 +4648,29 @@
                     return true;
                 }
                 
-                const orderDate = new Date(o.ngayLap);
-                orderDate.setHours(0, 0, 0, 0);
+                const orderDate = parseOrderDate(o.ngayLap);
+                if (!orderDate) return true;
                 
                 switch (filterType) {
                     case 'day':
                         if (!filterDate) return true;
-                        const selectedDate = new Date(filterDate);
-                        selectedDate.setHours(0, 0, 0, 0);
-                        return orderDate.getTime() === selectedDate.getTime();
+                        // filterDate format: "YYYY-MM-DD"
+                        const [filterYearDay, filterMonthDay, filterDay] = filterDate.split('-').map(Number);
+                        return orderDate.year === filterYearDay && 
+                               orderDate.month === filterMonthDay && 
+                               orderDate.day === filterDay;
                     
                     case 'month':
                         if (!filterMonth) return true;
-                        const [year, month] = filterMonth.split('-').map(Number);
-                        return orderDate.getFullYear() === year && 
-                               orderDate.getMonth() === (month - 1);
+                        // filterMonth format: "YYYY-MM"
+                        const [filterYearMonth, filterMonthMonth] = filterMonth.split('-').map(Number);
+                        return orderDate.year === filterYearMonth && 
+                               orderDate.month === filterMonthMonth;
                     
                     case 'year':
                         if (!filterYear) return true;
-                        const selectedYear = parseInt(filterYear);
-                        return orderDate.getFullYear() === selectedYear;
+                        const filterYearValue = parseInt(filterYear);
+                        return orderDate.year === filterYearValue;
                     
                     default:
                         return true;
