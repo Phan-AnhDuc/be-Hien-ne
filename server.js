@@ -32,6 +32,109 @@ async function getDefaultCustomerTypeId() {
     return firstResult.recordset.length > 0 ? firstResult.recordset[0].id : null;
 }
 
+// Helper function để đăng ký font tiếng Việt cho PDF
+function registerVietnameseFonts(doc) {
+    const fontsDir = path.join(__dirname, 'fonts');
+    const windowsFontsDir = process.platform === 'win32'
+        ? path.join(process.env.WINDIR || 'C:\\Windows', 'Fonts')
+        : null;
+
+    let vietnameseFont = 'Times-Roman';
+    let vietnameseFontBold = 'Times-Bold';
+
+    const fontFiles = {
+        'NotoSans-Regular.ttf': 'NotoSans',
+        'NotoSans-Bold.ttf': 'NotoSansBold',
+        'Arial-Unicode-MS.ttf': 'ArialUnicode',
+        'Times-New-Roman.ttf': 'TimesNewRoman'
+    };
+
+    const windowsFontFiles = {
+        'arial.ttf': 'Arial',
+        'arialbd.ttf': 'ArialBold',
+        'times.ttf': 'TimesNewRoman',
+        'timesbd.ttf': 'TimesNewRomanBold',
+        'tahoma.ttf': 'Tahoma',
+        'tahomabd.ttf': 'TahomaBold'
+    };
+
+    // Thử đăng ký font từ thư mục fonts
+    for (const [filename, fontName] of Object.entries(fontFiles)) {
+        const fontPath = path.join(fontsDir, filename);
+        if (fs.existsSync(fontPath)) {
+            try {
+                doc.registerFont(fontName, fontPath);
+                if (filename.includes('Regular') || filename.includes('Arial') || filename.includes('Times-New')) {
+                    vietnameseFont = fontName;
+                }
+                if (filename.includes('Bold')) {
+                    vietnameseFontBold = fontName;
+                }
+            } catch (e) {
+                console.log(`Could not register font ${filename}:`, e.message);
+            }
+        }
+    }
+
+    // Thử đăng ký font từ Windows Fonts
+    if (windowsFontsDir && fs.existsSync(windowsFontsDir) && vietnameseFont === 'Times-Roman') {
+        const preferredFonts = ['arial.ttf', 'tahoma.ttf', 'times.ttf'];
+        const preferredBoldFonts = ['arialbd.ttf', 'tahomabd.ttf', 'timesbd.ttf'];
+
+        for (const preferredFont of preferredFonts) {
+            if (windowsFontFiles[preferredFont]) {
+                const fontPath = path.join(windowsFontsDir, preferredFont);
+                if (fs.existsSync(fontPath)) {
+                    try {
+                        const fontName = windowsFontFiles[preferredFont];
+                        doc.registerFont(fontName, fontPath);
+                        vietnameseFont = fontName;
+                        break;
+                    } catch (e) {
+                        console.log(`Could not register Windows font ${preferredFont}:`, e.message);
+                    }
+                }
+            }
+        }
+
+        for (const preferredBoldFont of preferredBoldFonts) {
+            if (windowsFontFiles[preferredBoldFont]) {
+                const fontPath = path.join(windowsFontsDir, preferredBoldFont);
+                if (fs.existsSync(fontPath)) {
+                    try {
+                        const fontName = windowsFontFiles[preferredBoldFont];
+                        doc.registerFont(fontName, fontPath);
+                        vietnameseFontBold = fontName;
+                        break;
+                    } catch (e) {
+                        console.log(`Could not register Windows bold font ${preferredBoldFont}:`, e.message);
+                    }
+                }
+            }
+        }
+    }
+
+    return { vietnameseFont, vietnameseFontBold };
+}
+
+// Helper function để ghi lịch sử hoạt động
+async function ghiLichSuHoatDong(idNV, loaiHoatDong, moTa, thamChieu = null, idThamChieu = null) {
+    try {
+        const pool = await poolPromise;
+        await pool.request()
+            .input('idNV', sql.Int, idNV)
+            .input('loaiHoatDong', sql.NVarChar(50), loaiHoatDong)
+            .input('moTa', sql.NVarChar(500), moTa || null)
+            .input('thamChieu', sql.NVarChar(50), thamChieu || null)
+            .input('idThamChieu', sql.Int, idThamChieu || null)
+            .query(`INSERT INTO LICHSU_HOATDONG (idNV, loaiHoatDong, moTa, thamChieu, idThamChieu) 
+                    VALUES (@idNV, @loaiHoatDong, @moTa, @thamChieu, @idThamChieu)`);
+    } catch (err) {
+        // Không throw error để không ảnh hưởng đến flow chính
+        console.error('Lỗi ghi lịch sử hoạt động:', err.message);
+    }
+}
+
 // ================== LOGIN APIs ==================
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
@@ -1351,6 +1454,11 @@ app.post('/api/hoadon', async (req, res) => {
             invoiceData.diemDaDung = diemDaDung || 0;
         }
 
+        // Ghi lịch sử hoạt động
+        const tongTienFormatted = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(invoiceData.tongTien);
+        const moTa = `Tạo hóa đơn ${invoiceData.maHD} với tổng tiền ${tongTienFormatted}`;
+        await ghiLichSuHoatDong(idNV, 'Tạo hóa đơn', moTa, invoiceData.maHD, invoiceData.id);
+
         res.status(201).json({
             success: true,
             message: 'Thêm hóa đơn thành công',
@@ -1428,6 +1536,18 @@ app.put('/api/hoadon/:id', async (req, res) => {
             });
         }
 
+        // Lấy mã hóa đơn để ghi log
+        const hdResult = await pool.request()
+            .input('id', sql.Int, id)
+            .query('SELECT maHD FROM HOADON WHERE id = @id');
+        
+        const maHD = hdResult.recordset[0]?.maHD;
+        if (maHD) {
+            const tongTienFormatted = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(finalTongTien);
+            const moTa = `Sửa hóa đơn ${maHD} với tổng tiền ${tongTienFormatted}`;
+            await ghiLichSuHoatDong(idNV, 'Sửa hóa đơn', moTa, maHD, parseInt(id));
+        }
+
         res.status(200).json({
             success: true,
             message: 'Cập nhật hóa đơn thành công',
@@ -1445,8 +1565,25 @@ app.put('/api/hoadon/:id', async (req, res) => {
 // DELETE
 app.delete('/api/hoadon/:id', async (req, res) => {
     const { id } = req.params;
+    const { idNV } = req.body; // Lấy idNV từ body nếu có
     try {
         const pool = await poolPromise;
+        
+        // Lấy thông tin trước khi xóa để ghi log
+        const beforeDelete = await pool.request()
+            .input('id', sql.Int, id)
+            .query('SELECT maHD, idNV FROM HOADON WHERE id = @id');
+        
+        if (beforeDelete.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy hóa đơn'
+            });
+        }
+        
+        const maHD = beforeDelete.recordset[0].maHD;
+        const logIdNV = idNV || beforeDelete.recordset[0].idNV;
+        
         const result = await pool.request()
             .input('id', sql.Int, id)
             .query('DELETE FROM HOADON WHERE id = @id');
@@ -1456,6 +1593,11 @@ app.delete('/api/hoadon/:id', async (req, res) => {
                 success: false,
                 message: 'Không tìm thấy hóa đơn'
             });
+        }
+
+        // Ghi lịch sử hoạt động
+        if (logIdNV && maHD) {
+            await ghiLichSuHoatDong(logIdNV, 'Xóa hóa đơn', `Xóa hóa đơn ${maHD}`, maHD, parseInt(id));
         }
 
         res.status(200).json({
@@ -1780,11 +1922,13 @@ app.get('/api/phieunhap', async (req, res) => {
     try {
         const pool = await poolPromise;
         const result = await pool.request()
-            .query(`SELECT p.id, p.maPN, p.ngayNhap, p.idNV, p.tongTien,
+            .query(`SELECT p.id, p.maPN, p.ngayNhap, p.idNV, p.idNCC, p.tongTien,
                     nv.maNV, nv.tenNV as tenNhanVien,
+                    ncc.maNCC, ncc.tenNCC as tenNhaCungCap,
                     (SELECT ISNULL(SUM(thanhTien), 0) FROM CHITIET_PHIEUNHAP WHERE idPN = p.id) as subtotal
                     FROM PHIEUNHAP p
                     LEFT JOIN NHANVIEN nv ON p.idNV = nv.id
+                    LEFT JOIN NHACUNGCAP ncc ON p.idNCC = ncc.id
                     ORDER BY p.ngayNhap DESC`);
 
         res.status(200).json({
@@ -1836,7 +1980,7 @@ app.get('/api/phieunhap/:id', async (req, res) => {
 
 // POST - Tạo phiếu nhập mới
 app.post('/api/phieunhap', async (req, res) => {
-    const { idNV } = req.body;
+    const { idNV, idNCC } = req.body;
     if (!idNV) {
         return res.status(400).json({
             success: false,
@@ -1874,14 +2018,33 @@ app.post('/api/phieunhap', async (req, res) => {
         //     });
         // }
         
+        // Kiểm tra nhà cung cấp nếu có
+        if (idNCC) {
+            const nccResult = await pool.request()
+                .input('idNCC', sql.Int, idNCC)
+                .query('SELECT id FROM NHACUNGCAP WHERE id = @idNCC AND trangthai = 1');
+            
+            if (nccResult.recordset.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Không tìm thấy nhà cung cấp hoặc nhà cung cấp đã ngừng hoạt động'
+                });
+            }
+        }
+        
         // Tạo phiếu nhập (server tự động sinh maPN)
         const result = await pool.request()
             .input('idNV', sql.Int, idNV)
-            .query(`INSERT INTO PHIEUNHAP (idNV) 
-                    OUTPUT INSERTED.id, INSERTED.maPN, INSERTED.ngayNhap, INSERTED.idNV, INSERTED.tongTien 
-                    VALUES (@idNV)`);
+            .input('idNCC', sql.Int, idNCC || null)
+            .query(`INSERT INTO PHIEUNHAP (idNV, idNCC) 
+                    OUTPUT INSERTED.id, INSERTED.maPN, INSERTED.ngayNhap, INSERTED.idNV, INSERTED.idNCC, INSERTED.tongTien 
+                    VALUES (@idNV, @idNCC)`);
 
         const phieuNhapData = result.recordset[0];
+
+        // Ghi lịch sử hoạt động
+        const moTa = `Tạo phiếu nhập ${phieuNhapData.maPN}`;
+        await ghiLichSuHoatDong(idNV, 'Tạo phiếu nhập', moTa, phieuNhapData.maPN, phieuNhapData.id);
 
         res.status(201).json({
             success: true,
@@ -1956,10 +2119,16 @@ app.put('/api/phieunhap/:id', async (req, res) => {
                     LEFT JOIN NHANVIEN nv ON p.idNV = nv.id
                     WHERE p.id = @id`);
 
+        const phieuNhapData = updatedResult.recordset[0];
+        
+        // Ghi lịch sử hoạt động
+        const moTa = `Sửa phiếu nhập ${phieuNhapData.maPN}`;
+        await ghiLichSuHoatDong(idNV, 'Sửa phiếu nhập', moTa, phieuNhapData.maPN, phieuNhapData.id);
+
         res.status(200).json({
             success: true,
             message: 'Cập nhật phiếu nhập thành công',
-            data: updatedResult.recordset[0]
+            data: phieuNhapData
         });
     } catch (err) {
         res.status(500).json({
@@ -1973,8 +2142,24 @@ app.put('/api/phieunhap/:id', async (req, res) => {
 // DELETE - Xóa phiếu nhập (sẽ trừ lại hàng trong kho thông qua trigger)
 app.delete('/api/phieunhap/:id', async (req, res) => {
     const { id } = req.params;
+    const { idNV } = req.body; // Lấy idNV từ body nếu có
     try {
         const pool = await poolPromise;
+        
+        // Lấy thông tin trước khi xóa để ghi log
+        const beforeDelete = await pool.request()
+            .input('id', sql.Int, id)
+            .query('SELECT maPN, idNV FROM PHIEUNHAP WHERE id = @id');
+        
+        if (beforeDelete.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy phiếu nhập'
+            });
+        }
+        
+        const maPN = beforeDelete.recordset[0].maPN;
+        const logIdNV = idNV || beforeDelete.recordset[0].idNV;
         
         // Lấy chi tiết trước khi xóa để trừ lại kho
         const detailResult = await pool.request()
@@ -1999,6 +2184,11 @@ app.delete('/api/phieunhap/:id', async (req, res) => {
                 .input('idHang', sql.Int, detail.idHang)
                 .input('soluong', sql.Int, detail.soluong)
                 .query('UPDATE HANGHOA SET soluong = soluong - @soluong WHERE id = @idHang');
+        }
+
+        // Ghi lịch sử hoạt động
+        if (logIdNV && maPN) {
+            await ghiLichSuHoatDong(logIdNV, 'Xóa phiếu nhập', `Xóa phiếu nhập ${maPN}`, maPN, parseInt(id));
         }
 
         res.status(200).json({
@@ -3390,6 +3580,502 @@ app.get('/api/thongke/doanhthu', async (req, res) => {
     }
 });
 
+// ================== XUẤT BÁO CÁO DOANH THU ==================
+app.get('/api/thongke/doanhthu/export', async (req, res) => {
+    const { period, startDate, endDate, idNV, format = 'pdf' } = req.query;
+    
+    try {
+        const pool = await poolPromise;
+        
+        // Lấy dữ liệu thống kê (dùng lại logic từ API thống kê)
+        let query = '';
+        const hasIdNV = idNV && idNV !== '';
+        
+        if (period === 'day' && startDate && endDate) {
+            query = `SELECT 
+                        CAST(h.ngayLap AS DATE) as ngay,
+                        h.idNV,
+                        nv.maNV,
+                        nv.tenNV as tenNhanVien,
+                        COUNT(*) as soHoaDon,
+                        SUM(h.tongTien) as tongDoanhThu
+                    FROM HOADON h
+                    LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                    WHERE CAST(h.ngayLap AS DATE) BETWEEN @startDate AND @endDate
+                    ${hasIdNV ? 'AND h.idNV = @idNV' : ''}
+                    GROUP BY CAST(h.ngayLap AS DATE), h.idNV, nv.maNV, nv.tenNV
+                    ORDER BY ngay DESC`;
+        } else if (period === 'month' && startDate && endDate) {
+            query = `SELECT 
+                        YEAR(h.ngayLap) as nam,
+                        MONTH(h.ngayLap) as thang,
+                        h.idNV,
+                        nv.maNV,
+                        nv.tenNV as tenNhanVien,
+                        COUNT(*) as soHoaDon,
+                        SUM(h.tongTien) as tongDoanhThu
+                    FROM HOADON h
+                    LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                    WHERE CAST(h.ngayLap AS DATE) BETWEEN @startDate AND @endDate
+                    ${hasIdNV ? 'AND h.idNV = @idNV' : ''}
+                    GROUP BY YEAR(h.ngayLap), MONTH(h.ngayLap), h.idNV, nv.maNV, nv.tenNV
+                    ORDER BY nam DESC, thang DESC`;
+        } else if (period === 'year' && startDate && endDate) {
+            query = `SELECT 
+                        YEAR(h.ngayLap) as nam,
+                        h.idNV,
+                        nv.maNV,
+                        nv.tenNV as tenNhanVien,
+                        COUNT(*) as soHoaDon,
+                        SUM(h.tongTien) as tongDoanhThu
+                    FROM HOADON h
+                    LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+                    WHERE CAST(h.ngayLap AS DATE) BETWEEN @startDate AND @endDate
+                    ${hasIdNV ? 'AND h.idNV = @idNV' : ''}
+                    GROUP BY YEAR(h.ngayLap), h.idNV, nv.maNV, nv.tenNV
+                    ORDER BY nam DESC`;
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: 'Thiếu thông tin period hoặc startDate/endDate'
+            });
+        }
+        
+        const request = pool.request();
+        if (startDate) request.input('startDate', sql.Date, startDate);
+        if (endDate) request.input('endDate', sql.Date, endDate);
+        if (hasIdNV) request.input('idNV', sql.Int, parseInt(idNV));
+        
+        const result = await request.query(query);
+        const data = result.recordset;
+        
+        // Tính tổng
+        const totalRevenue = data.reduce((sum, item) => sum + (parseFloat(item.tongDoanhThu) || 0), 0);
+        const totalOrders = data.reduce((sum, item) => sum + (parseInt(item.soHoaDon) || 0), 0);
+        
+        if (format === 'excel') {
+            // Xuất Excel
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Báo Cáo Doanh Thu');
+            
+            // Header
+            worksheet.mergeCells('A1:F1');
+            worksheet.getCell('A1').value = 'BÁO CÁO DOANH THU';
+            worksheet.getCell('A1').font = { size: 16, bold: true };
+            worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+            
+            worksheet.mergeCells('A2:F2');
+            const periodText = period === 'day' ? 'Theo Ngày' : period === 'month' ? 'Theo Tháng' : 'Theo Năm';
+            worksheet.getCell('A2').value = `${periodText} - Từ ${startDate} đến ${endDate}`;
+            worksheet.getCell('A2').alignment = { horizontal: 'center' };
+            
+            worksheet.getRow(4).values = ['STT', period === 'day' ? 'Ngày' : period === 'month' ? 'Tháng/Năm' : 'Năm', 'Nhân Viên', 'Số Hóa Đơn', 'Tổng Doanh Thu', 'Ghi Chú'];
+            worksheet.getRow(4).font = { bold: true };
+            worksheet.getRow(4).fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE0E0E0' }
+            };
+            
+            // Data
+            data.forEach((item, index) => {
+                const row = worksheet.addRow([
+                    index + 1,
+                    period === 'day' ? item.ngay : period === 'month' ? `Tháng ${item.thang}/${item.nam}` : item.nam,
+                    item.tenNhanVien || item.maNV || 'N/A',
+                    item.soHoaDon,
+                    parseFloat(item.tongDoanhThu || 0),
+                    ''
+                ]);
+                row.getCell(5).numFmt = '#,##0';
+            });
+            
+            // Tổng
+            worksheet.addRow([]);
+            const totalRow = worksheet.addRow(['TỔNG CỘNG', '', '', totalOrders, totalRevenue, '']);
+            totalRow.font = { bold: true };
+            totalRow.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFFFE0' }
+            };
+            totalRow.getCell(5).numFmt = '#,##0';
+            
+            // Auto fit columns
+            worksheet.columns.forEach(column => {
+                column.width = 15;
+            });
+            
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename="BaoCaoDoanhThu_${period}_${startDate}_${endDate}.xlsx"`);
+            
+            await workbook.xlsx.write(res);
+            res.end();
+        } else {
+            // Xuất PDF
+            const doc = new PDFDocument({ margin: 50, size: 'A4' });
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="BaoCaoDoanhThu_${period}_${startDate}_${endDate}.pdf"`);
+            doc.pipe(res);
+            
+            // Đăng ký font tiếng Việt
+            const { vietnameseFont, vietnameseFontBold } = registerVietnameseFonts(doc);
+            
+            // Header
+            doc.fontSize(20).font(vietnameseFontBold).text('BÁO CÁO DOANH THU', { align: 'center' });
+            doc.moveDown();
+            const periodText = period === 'day' ? 'Theo Ngày' : period === 'month' ? 'Theo Tháng' : 'Theo Năm';
+            doc.fontSize(12).font(vietnameseFont).text(`${periodText} - Từ ${startDate} đến ${endDate}`, { align: 'center' });
+            doc.moveDown(2);
+            
+            // Table header
+            const tableTop = doc.y;
+            const colWidths = [50, 100, 150, 100, 120, 100];
+            const colX = [50, 100, 200, 350, 450, 570];
+            
+            doc.fontSize(10).font(vietnameseFontBold);
+            doc.text('STT', colX[0], tableTop);
+            doc.text(period === 'day' ? 'Ngày' : period === 'month' ? 'Tháng/Năm' : 'Năm', colX[1], tableTop);
+            doc.text('Nhân Viên', colX[2], tableTop);
+            doc.text('Số HĐ', colX[3], tableTop);
+            doc.text('Doanh Thu', colX[4], tableTop);
+            
+            doc.moveTo(50, tableTop + 20).lineTo(670, tableTop + 20).stroke();
+            
+            // Data rows
+            let y = tableTop + 30;
+            doc.font(vietnameseFont).fontSize(9);
+            data.forEach((item, index) => {
+                if (y > 750) {
+                    doc.addPage();
+                    y = 50;
+                }
+                doc.text((index + 1).toString(), colX[0], y);
+                const dateText = period === 'day' ? item.ngay : period === 'month' ? `Tháng ${item.thang}/${item.nam}` : item.nam.toString();
+                doc.text(dateText, colX[1], y);
+                doc.text(item.tenNhanVien || item.maNV || 'N/A', colX[2], y);
+                doc.text(item.soHoaDon.toString(), colX[3], y);
+                doc.text(parseFloat(item.tongDoanhThu || 0).toLocaleString('vi-VN') + ' đ', colX[4], y);
+                y += 20;
+            });
+            
+            // Tổng
+            doc.moveTo(50, y).lineTo(670, y).stroke();
+            y += 10;
+            doc.font(vietnameseFontBold).fontSize(10);
+            doc.text('TỔNG CỘNG', colX[0], y);
+            doc.text(totalOrders.toString(), colX[3], y);
+            doc.text(totalRevenue.toLocaleString('vi-VN') + ' đ', colX[4], y);
+            
+            doc.end();
+        }
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi xuất báo cáo',
+            error: err.message
+        });
+    }
+});
+
+// ================== XUẤT BÁO CÁO LỊCH SỬ HOẠT ĐỘNG ==================
+app.get('/api/lichsu/export', async (req, res) => {
+    const { loaiHoatDong, format = 'pdf' } = req.query;
+    
+    try {
+        const pool = await poolPromise;
+        
+        let query = `SELECT TOP 200
+                    ls.id, ls.idNV, ls.loaiHoatDong, ls.moTa, ls.thamChieu, ls.idThamChieu, ls.thoiGian,
+                    nv.maNV, nv.tenNV as tenNhanVien
+                    FROM LICHSU_HOATDONG ls
+                    LEFT JOIN NHANVIEN nv ON ls.idNV = nv.id
+                    WHERE 1=1`;
+        
+        const request = pool.request();
+        
+        if (loaiHoatDong) {
+            query += ' AND ls.loaiHoatDong = @loaiHoatDong';
+            request.input('loaiHoatDong', sql.NVarChar(50), loaiHoatDong);
+        }
+        
+        query += ' ORDER BY ls.thoiGian DESC';
+        
+        const result = await request.query(query);
+        const data = result.recordset;
+        
+        if (format === 'excel') {
+            // Xuất Excel
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Lịch Sử Hoạt Động');
+            
+            worksheet.mergeCells('A1:E1');
+            worksheet.getCell('A1').value = 'BÁO CÁO LỊCH SỬ HOẠT ĐỘNG';
+            worksheet.getCell('A1').font = { size: 16, bold: true };
+            worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+            
+            worksheet.getRow(3).values = ['STT', 'Thời Gian', 'Nhân Viên', 'Loại Hoạt Động', 'Mô Tả', 'Tham Chiếu'];
+            worksheet.getRow(3).font = { bold: true };
+            worksheet.getRow(3).fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE0E0E0' }
+            };
+            
+            data.forEach((item, index) => {
+                const thoiGian = new Date(item.thoiGian).toLocaleString('vi-VN');
+                worksheet.addRow([
+                    index + 1,
+                    thoiGian,
+                    item.tenNhanVien || item.maNV || 'N/A',
+                    item.loaiHoatDong,
+                    item.moTa || '-',
+                    item.thamChieu || '-'
+                ]);
+            });
+            
+            worksheet.columns.forEach(column => {
+                column.width = 20;
+            });
+            
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename="BaoCaoLichSu_${new Date().toISOString().split('T')[0]}.xlsx"`);
+            
+            await workbook.xlsx.write(res);
+            res.end();
+        } else {
+            // Xuất PDF
+            const doc = new PDFDocument({ margin: 50, size: 'A4' });
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="BaoCaoLichSu_${new Date().toISOString().split('T')[0]}.pdf"`);
+            doc.pipe(res);
+            
+            // Đăng ký font tiếng Việt
+            const { vietnameseFont, vietnameseFontBold } = registerVietnameseFonts(doc);
+            
+            doc.fontSize(20).font(vietnameseFontBold).text('BÁO CÁO LỊCH SỬ HOẠT ĐỘNG', { align: 'center' });
+            doc.moveDown(2);
+            
+            const tableTop = doc.y;
+            const colWidths = [50, 120, 120, 120, 200, 100];
+            const colX = [50, 100, 220, 340, 460, 660];
+            
+            doc.fontSize(9).font(vietnameseFontBold);
+            doc.text('STT', colX[0], tableTop);
+            doc.text('Thời Gian', colX[1], tableTop);
+            doc.text('Nhân Viên', colX[2], tableTop);
+            doc.text('Loại HĐ', colX[3], tableTop);
+            doc.text('Mô Tả', colX[4], tableTop);
+            doc.text('Tham Chiếu', colX[5], tableTop);
+            
+            doc.moveTo(50, tableTop + 15).lineTo(760, tableTop + 15).stroke();
+            
+            let y = tableTop + 25;
+            doc.font(vietnameseFont).fontSize(8);
+            data.forEach((item, index) => {
+                if (y > 750) {
+                    doc.addPage();
+                    y = 50;
+                    doc.font(vietnameseFontBold).fontSize(9);
+                    doc.text('STT', colX[0], y);
+                    doc.text('Thời Gian', colX[1], y);
+                    doc.text('Nhân Viên', colX[2], y);
+                    doc.text('Loại HĐ', colX[3], y);
+                    doc.text('Mô Tả', colX[4], y);
+                    doc.text('Tham Chiếu', colX[5], y);
+                    doc.moveTo(50, y + 15).lineTo(760, y + 15).stroke();
+                    y += 25;
+                    doc.font(vietnameseFont).fontSize(8);
+                }
+                const thoiGian = new Date(item.thoiGian).toLocaleString('vi-VN');
+                doc.text((index + 1).toString(), colX[0], y);
+                doc.text(thoiGian, colX[1], y);
+                doc.text(item.tenNhanVien || item.maNV || 'N/A', colX[2], y);
+                doc.text(item.loaiHoatDong, colX[3], y);
+                doc.text((item.moTa || '-').substring(0, 30), colX[4], y);
+                doc.text(item.thamChieu || '-', colX[5], y);
+                y += 20;
+            });
+            
+            doc.end();
+        }
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi xuất báo cáo',
+            error: err.message
+        });
+    }
+});
+
+// ================== NHACUNGCAP APIs ==================
+// GET all
+app.get('/api/nhacungcap', async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const { all } = req.query; // Tham số để lấy tất cả (kể cả đã ngừng)
+        const whereClause = all === 'true' ? '' : 'WHERE trangthai = 1';
+        const result = await pool.request()
+            .query(`SELECT id, maNCC, tenNCC, sdt, email, diachi, ghiChu, trangthai, ngayTao
+                    FROM NHACUNGCAP
+                    ${whereClause}
+                    ORDER BY tenNCC`);
+
+        res.status(200).json({
+            success: true,
+            count: result.recordset.length,
+            data: result.recordset
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi lấy dữ liệu nhà cung cấp',
+            error: err.message
+        });
+    }
+});
+
+// GET by ID
+app.get('/api/nhacungcap/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('id', sql.Int, id)
+            .query(`SELECT id, maNCC, tenNCC, sdt, email, diachi, ghiChu, trangthai, ngayTao
+                    FROM NHACUNGCAP
+                    WHERE id = @id`);
+
+        if (result.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy nhà cung cấp'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: result.recordset[0]
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi lấy dữ liệu nhà cung cấp',
+            error: err.message
+        });
+    }
+});
+
+// POST
+app.post('/api/nhacungcap', async (req, res) => {
+    const { tenNCC, sdt, email, diachi, ghiChu } = req.body;
+    if (!tenNCC) {
+        return res.status(400).json({
+            success: false,
+            message: 'Thiếu thông tin bắt buộc: tenNCC'
+        });
+    }
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('tenNCC', sql.NVarChar(100), tenNCC)
+            .input('sdt', sql.VarChar(15), sdt || null)
+            .input('email', sql.NVarChar(100), email || null)
+            .input('diachi', sql.NVarChar(200), diachi || null)
+            .input('ghiChu', sql.NVarChar(500), ghiChu || null)
+            .query(`INSERT INTO NHACUNGCAP (tenNCC, sdt, email, diachi, ghiChu) 
+                    OUTPUT INSERTED.id, INSERTED.maNCC, INSERTED.tenNCC, INSERTED.sdt, INSERTED.email, INSERTED.diachi, INSERTED.ghiChu, INSERTED.trangthai, INSERTED.ngayTao 
+                    VALUES (@tenNCC, @sdt, @email, @diachi, @ghiChu)`);
+
+        res.status(201).json({
+            success: true,
+            message: 'Thêm nhà cung cấp thành công',
+            data: result.recordset[0]
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi thêm nhà cung cấp',
+            error: err.message
+        });
+    }
+});
+
+// PUT
+app.put('/api/nhacungcap/:id', async (req, res) => {
+    const { id } = req.params;
+    const { tenNCC, sdt, email, diachi, ghiChu, trangthai } = req.body;
+    if (!tenNCC) {
+        return res.status(400).json({
+            success: false,
+            message: 'Thiếu thông tin bắt buộc: tenNCC'
+        });
+    }
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('id', sql.Int, id)
+            .input('tenNCC', sql.NVarChar(100), tenNCC)
+            .input('sdt', sql.VarChar(15), sdt || null)
+            .input('email', sql.NVarChar(100), email || null)
+            .input('diachi', sql.NVarChar(200), diachi || null)
+            .input('ghiChu', sql.NVarChar(500), ghiChu || null)
+            .input('trangthai', sql.Bit, trangthai !== undefined ? trangthai : 1)
+            .query(`UPDATE NHACUNGCAP 
+                    SET tenNCC = @tenNCC, sdt = @sdt, email = @email, diachi = @diachi, ghiChu = @ghiChu, trangthai = @trangthai
+                    OUTPUT INSERTED.id, INSERTED.maNCC, INSERTED.tenNCC, INSERTED.sdt, INSERTED.email, INSERTED.diachi, INSERTED.ghiChu, INSERTED.trangthai, INSERTED.ngayTao
+                    WHERE id = @id`);
+
+        if (result.recordset.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy nhà cung cấp'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Cập nhật nhà cung cấp thành công',
+            data: result.recordset[0]
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi cập nhật nhà cung cấp',
+            error: err.message
+        });
+    }
+});
+
+// DELETE (soft delete - chỉ đổi trạng thái)
+app.delete('/api/nhacungcap/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('id', sql.Int, id)
+            .query(`UPDATE NHACUNGCAP SET trangthai = 0 WHERE id = @id`);
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Không tìm thấy nhà cung cấp'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Xóa nhà cung cấp thành công'
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi xóa nhà cung cấp',
+            error: err.message
+        });
+    }
+});
+
 // ================== HOME PAGE ==================
 app.get('/', (req, res) => {
     res.send(`
@@ -3406,8 +4092,52 @@ app.get('/', (req, res) => {
             <li><strong>HANGHOA:</strong> GET, POST, PUT, DELETE /api/hanghoa</li>
             <li><strong>HOADON:</strong> GET, POST, PUT, DELETE /api/hoadon</li>
             <li><strong>CHITIET_HD:</strong> GET, POST, PUT, DELETE /api/chitiethd</li>
+            <li><strong>LICHSU_HOATDONG:</strong> GET /api/lichsu</li>
         </ul>
     `);
+});
+
+// ================== LICHSU_HOATDONG APIs ==================
+// GET all - Lấy lịch sử hoạt động
+app.get('/api/lichsu', async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const { idNV, loaiHoatDong, limit = 100 } = req.query;
+        
+        let query = `SELECT TOP ${limit} 
+                    ls.id, ls.idNV, ls.loaiHoatDong, ls.moTa, ls.thamChieu, ls.idThamChieu, ls.thoiGian,
+                    nv.maNV, nv.tenNV as tenNhanVien
+                    FROM LICHSU_HOATDONG ls
+                    LEFT JOIN NHANVIEN nv ON ls.idNV = nv.id
+                    WHERE 1=1`;
+        
+        const request = pool.request();
+        
+        if (idNV) {
+            query += ' AND ls.idNV = @idNV';
+            request.input('idNV', sql.Int, parseInt(idNV));
+        }
+        
+        if (loaiHoatDong) {
+            query += ' AND ls.loaiHoatDong = @loaiHoatDong';
+            request.input('loaiHoatDong', sql.NVarChar(50), loaiHoatDong);
+        }
+        
+        query += ' ORDER BY ls.thoiGian DESC';
+        
+        const result = await request.query(query);
+        
+        res.status(200).json({
+            success: true,
+            data: result.recordset
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi lấy lịch sử hoạt động',
+            error: err.message
+        });
+    }
 });
 
 app.listen(PORT, () => {

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hệ Thống Quản Lý Cửa Hàng FMSTYLE</title>
+    <title>Hệ Thống Quản Lý Kho - FMSTYLE</title>
     <link rel="stylesheet" href="../css/style.css">
 </head>
 
@@ -14,55 +14,19 @@
         <div class="sidebar">
             <div class="sidebar-header">
                 <h1 data-text="FMSTYLE">FMSTYLE</h1>
-                <p>Hệ Thống Quản Lý</p>
+                <p>Hệ Thống Quản Lý Kho</p>
             </div>
             <div class="menu-item active" onclick="showPage('dashboard', this)">
                 <span class="menu-item-icon">📊</span>
                 <span>Tổng Quan</span>
             </div>
-            <div class="menu-item" onclick="showPage('vitri', this)">
-                <span class="menu-item-icon">📍</span>
-                <span>Vị Trí</span>
-            </div>
-            <div class="menu-item" onclick="showPage('phanloaikh', this)">
-                <span class="menu-item-icon">👥</span>
-                <span>Phân Loại KH</span>
-            </div>
-            <div class="menu-item" onclick="showPage('phanloaisanpham', this)">
-                <span class="menu-item-icon">📂</span>
-                <span>Phân Loại Sản Phẩm</span>
-            </div>
-            <div class="menu-item" onclick="showPage('khuyenmai', this)">
-                <span class="menu-item-icon">🎫</span>
-                <span>Khuyến Mãi</span>
-            </div>
-            <div class="menu-item" onclick="showPage('nhanvien', this)">
-                <span class="menu-item-icon">👔</span>
-                <span>Nhân Viên</span>
-            </div>
-            <div class="menu-item" onclick="showPage('khachhang', this)">
-                <span class="menu-item-icon">👤</span>
-                <span>Khách Hàng</span>
-            </div>
-            <div class="menu-item" onclick="showPage('hanghoa', this)">
-                <span class="menu-item-icon">📦</span>
-                <span>Hàng Hóa</span>
-            </div>
-            <div class="menu-item" onclick="showPage('hoadon', this)">
-                <span class="menu-item-icon">🧾</span>
-                <span>Hóa Đơn</span>
-            </div>
-            <div class="menu-item" onclick="showPage('chitiethd', this)">
-                <span class="menu-item-icon">📝</span>
-                <span>Chi Tiết Hóa Đơn</span>
-            </div>
             <div class="menu-item" onclick="showPage('phieunhap', this)">
                 <span class="menu-item-icon">📥</span>
                 <span>Phiếu Nhập Hàng</span>
             </div>
-            <div class="menu-item" onclick="showPage('nhacungcap', this)">
-                <span class="menu-item-icon">🏢</span>
-                <span>Nhà Cung Cấp</span>
+            <div class="menu-item" onclick="showPage('hanghoa', this)">
+                <span class="menu-item-icon">📦</span>
+                <span>Hàng Hóa</span>
             </div>
             <div class="menu-item" onclick="showPage('lichsu', this)">
                 <span class="menu-item-icon">📋</span>
@@ -148,8 +112,50 @@
     <script src="../js/auth.js"></script>
     <script src="../js/app.js"></script>
     <script>
-        // Check authentication
-        requireAuth('admin');
+        // Check authentication - cho phép warehouse hoặc admin
+        const user = JSON.parse(localStorage.getItem("user"));
+        if (!user) {
+            window.location.href = "login.html";
+        } else if (user.role !== 'warehouse' && user.role !== 'admin') {
+            // Kiểm tra xem có phải thủ kho không (dựa vào vị trí)
+            // Nếu không phải warehouse hoặc admin, kiểm tra vị trí
+            alert('Bạn không có quyền truy cập trang này!');
+            window.location.href = "login.html";
+        }
+        
+        // Override showPage để chỉ cho phép các trang warehouse
+        const originalShowPage = window.showPage;
+        window.showPage = function(pageName, element) {
+            const allowedPages = ['dashboard', 'phieunhap', 'hanghoa', 'lichsu'];
+            if (!allowedPages.includes(pageName)) {
+                showAlert('Bạn không có quyền truy cập trang này', 'error');
+                return;
+            }
+            if (originalShowPage) {
+                originalShowPage(pageName, element);
+            } else {
+                currentPage = pageName;
+                loadPage();
+            }
+        };
+        
+        // Initialize - load dashboard by default
+        window.addEventListener('DOMContentLoaded', async function() {
+            initModalClose();
+            currentPage = 'dashboard';
+            // Activate dashboard menu item
+            document.querySelectorAll('.menu-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            const dashboardMenuItem = document.querySelector('.menu-item[onclick*="dashboard"]');
+            if (dashboardMenuItem) {
+                dashboardMenuItem.classList.add('active');
+            }
+            // Load dashboard
+            await loadDashboardInitialData();
+            await loadPage();
+        });
     </script>
 </body>
 </html>
+

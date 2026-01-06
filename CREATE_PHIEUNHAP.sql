@@ -5,14 +5,29 @@
 USE HeThongQuanLyCuaHang_FMSTYLE;
 GO
 
+ CREATE TABLE NHACUNGCAP(
+     id INT IDENTITY(1,1) PRIMARY KEY,
+     maNCC AS ('NCC' + RIGHT('000' + CAST(id AS VARCHAR(5)), 5)) PERSISTED,
+     tenNCC NVARCHAR(100) NOT NULL,
+     sdt VARCHAR(15),
+     email NVARCHAR(100),
+     diachi NVARCHAR(200),
+     ghiChu NVARCHAR(500),
+     trangthai BIT DEFAULT 1, -- 1: Hoạt động, 0: Ngừng hợp tác
+     ngayTao DATETIME DEFAULT GETDATE()
+ );
+GO
+
 -- Bảng PHIEUNHAP
 CREATE TABLE PHIEUNHAP(
     id INT IDENTITY(1,1) PRIMARY KEY,
     maPN AS ('PN' + RIGHT('000' + CAST(id AS VARCHAR(5)), 5)) PERSISTED,
     ngayNhap DATETIME DEFAULT GETDATE(),
     idNV INT NOT NULL, -- Người nhập (quản lý hoặc thủ kho)
+    idNCC INT NULL, -- Nhà cung cấp (có thể NULL)
     tongTien MONEY DEFAULT 0,
-    CONSTRAINT fk_PN_NV FOREIGN KEY(idNV) REFERENCES NHANVIEN(id)
+    CONSTRAINT fk_PN_NV FOREIGN KEY(idNV) REFERENCES NHANVIEN(id),
+    CONSTRAINT fk_PN_NCC FOREIGN KEY(idNCC) REFERENCES NHACUNGCAP(id)
 );
 GO
 
