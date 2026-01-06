@@ -82,9 +82,11 @@ async function loadPage() {
                 </button>
             </div>
             <div style="display: flex; gap: 10px;">
+                ${currentPage !== 'hoadon' ? `
                 <button class="btn btn-primary" onclick="openAddModal()">
                     ➕ Thêm Mới
                 </button>
+                ` : ''}
                 <button class="btn btn-secondary" onclick="loadData()">
                     🔄 Tải Lại
                 </button>
@@ -149,7 +151,7 @@ function renderTable(data) {
             let value = item[field];
             if (value === null || value === undefined) value = '-';
             if (typeof value === 'boolean') {
-                value = value ? 'Còn hiệu lực' : 'Hết hiệu lực';
+                value = value ? 'Hoạt động' : 'Không hoạt động';
             }
             if (field === 'tongtien' || field === 'tiengiamgia' || field === 'tongTien') {
                 value = value ? parseFloat(value).toLocaleString('vi-VN') + ' đ' : '0 đ';
@@ -158,13 +160,13 @@ function renderTable(data) {
                 value = value + '%';
             }
             if ((field === 'ngayNhap' || field === 'ngayNhapCuoi' || field === 'ngayLap') && value) {
-                const date = new Date(value);
                 if (field === 'ngayNhapCuoi') {
                     // ngayNhapCuoi là DATE, không có giờ
+                    const date = new Date(value);
                     value = date.toLocaleDateString('vi-VN');
                 } else {
-                    // ngayNhap và ngayLap là DATETIME, có giờ
-                    value = date.toLocaleDateString('vi-VN') + ' ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                    // ngayNhap và ngayLap là DATETIME, có giờ - sử dụng formatDate để xử lý đúng timezone
+                    value = formatDate(value);
                 }
             }
             if (field === 'diemDaDung' && value !== null && value !== undefined) {
@@ -179,16 +181,14 @@ function renderTable(data) {
             html += `<button class="btn btn-primary btn-sm" onclick="viewPhieuNhapDetail(${item.id}, '${item.maPN}')">👁️ Xem</button>`;
             html += `<button class="btn btn-warning btn-sm" onclick="editPhieuNhap(${item.id}, '${item.maPN}')">✏️ Sửa</button>`;
             html += `<button class="btn btn-danger btn-sm" onclick="deleteItem(${index})">🗑️ Xóa</button>`;
+        } else if (currentPage === 'hoadon') {
+            // Hóa đơn: chỉ có nút xuất PDF/Excel, không có Sửa/Xóa
+            html += `<button class="btn btn-secondary btn-sm" onclick="exportPDF('${item.maHD}')">📄 PDF</button>`;
+            html += `<button class="btn btn-success btn-sm" onclick="exportExcel('${item.maHD}')">📊 Excel</button>`;
         } else {
             // Default buttons for other pages
             html += `<button class="btn btn-warning btn-sm" onclick="openEditModal(${index})">✏️ Sửa</button>`;
             html += `<button class="btn btn-danger btn-sm" onclick="deleteItem(${index})">🗑️ Xóa</button>`;
-        }
-        
-        // Add PDF and Excel export buttons for invoices
-        if (currentPage === 'hoadon') {
-            html += `<button class="btn btn-secondary btn-sm" onclick="exportPDF('${item.maHD}')">📄 PDF</button>`;
-            html += `<button class="btn btn-success btn-sm" onclick="exportExcel('${item.maHD}')">📊 Excel</button>`;
         }
         
         html += `</td></tr>`;
@@ -237,11 +237,12 @@ function filterTableData() {
                 value = value + '%';
             }
             if ((field === 'ngayNhap' || field === 'ngayNhapCuoi' || field === 'ngayLap') && value) {
-                const date = new Date(value);
                 if (field === 'ngayNhapCuoi') {
+                    const date = new Date(value);
                     value = date.toLocaleDateString('vi-VN');
                 } else {
-                    value = date.toLocaleDateString('vi-VN') + ' ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                    // ngayNhap và ngayLap là DATETIME, có giờ - sử dụng formatDate để xử lý đúng timezone
+                    value = formatDate(value);
                 }
             }
             
@@ -711,7 +712,7 @@ async function viewPhieuNhapDetail(id, maPN) {
                 <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                     <h4 style="margin: 0; color: #e65100;">📥 Phiếu Nhập: ${maPN}</h4>
                     <p style="margin: 5px 0 0 0; color: #666;">
-                        Ngày nhập: ${new Date(phieuNhap.ngayNhap).toLocaleString('vi-VN')}<br>
+                        Ngày nhập: ${formatDate(phieuNhap.ngayNhap)}<br>
                         Nhân viên: ${phieuNhap.tenNhanVien || phieuNhap.maNV || 'N/A'}
                         ${phieuNhap.tenNhaCungCap ? `<br>Nhà cung cấp: ${phieuNhap.tenNhaCungCap} (${phieuNhap.maNCC || ''})` : ''}
                     </p>
@@ -798,7 +799,7 @@ async function editPhieuNhap(id, maPN) {
                 <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                     <h4 style="margin: 0; color: #e65100;">📥 Phiếu Nhập: ${maPN}</h4>
                     <p style="margin: 5px 0 0 0; color: #666;">
-                        Ngày nhập: ${new Date(phieuNhap.ngayNhap).toLocaleString('vi-VN')}<br>
+                        Ngày nhập: ${formatDate(phieuNhap.ngayNhap)}<br>
                         Nhân viên: ${phieuNhap.tenNhanVien || phieuNhap.maNV || 'N/A'}
                         ${phieuNhap.tenNhaCungCap ? `<br>Nhà cung cấp: ${phieuNhap.tenNhaCungCap} (${phieuNhap.maNCC || ''})` : ''}
                     </p>
@@ -1903,6 +1904,92 @@ async function loadDashboardInitialData() {
 
 function formatCurrency(amount) {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0);
+}
+
+// Format date - hiển thị đúng ngayLap từ database (không format hay convert gì cả)
+// Parse trực tiếp từ ISO string để giữ nguyên giờ UTC
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    
+    const dateStrClean = String(dateStr).trim();
+    
+    // Xử lý ISO format với Z (UTC): "2026-01-06T22:27:56.970Z"
+    // Parse trực tiếp từ string, không dùng Date object để tránh timezone conversion
+    if (dateStrClean.includes('T') && dateStrClean.endsWith('Z')) {
+        const isoMatch = dateStrClean.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?Z$/);
+        if (isoMatch) {
+            const [, year, month, day, hour, minute] = isoMatch.map(Number);
+            // Format trực tiếp từ UTC components - giữ nguyên giờ từ database
+            const dayStr = String(day).padStart(2, '0');
+            const monthStr = String(month).padStart(2, '0');
+            const hourStr = String(hour).padStart(2, '0');
+            const minuteStr = String(minute).padStart(2, '0');
+            return `${dayStr}/${monthStr}/${year} ${hourStr}:${minuteStr}`;
+        }
+    }
+    
+    // SQL Server format: "YYYY-MM-DD HH:mm:ss" (không có Z)
+    if (dateStrClean.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/)) {
+        const [datePart, timePart] = dateStrClean.split(' ');
+        const [year, month, day] = datePart.split('-').map(Number);
+        const [hour, minute] = timePart.split(':').map(Number);
+        const dayStr = String(day).padStart(2, '0');
+        const monthStr = String(month).padStart(2, '0');
+        const hourStr = String(hour).padStart(2, '0');
+        const minuteStr = String(minute).padStart(2, '0');
+        return `${dayStr}/${monthStr}/${year} ${hourStr}:${minuteStr}`;
+    }
+    
+    // DATE only: "YYYY-MM-DD" (không có giờ)
+    if (dateStrClean.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const [year, month, day] = dateStrClean.split('-').map(Number);
+        const dayStr = String(day).padStart(2, '0');
+        const monthStr = String(month).padStart(2, '0');
+        return `${dayStr}/${monthStr}/${year}`;
+    }
+    
+    // Fallback: chỉ dùng khi không match các format trên
+    return dateStrClean;
+}
+
+// Format datetime với đầy đủ giờ:phút:giây (dùng cho lịch sử hoạt động)
+// Hiển thị đúng thoiGian từ database (không format hay convert gì cả)
+function formatDateTime(dateStr) {
+    if (!dateStr) return '-';
+    
+    const dateStrClean = String(dateStr).trim();
+    
+    // Xử lý ISO format với Z (UTC): "2026-01-06T22:27:56.970Z"
+    // Parse trực tiếp từ string, không dùng Date object để tránh timezone conversion
+    if (dateStrClean.includes('T') && dateStrClean.endsWith('Z')) {
+        const isoMatch = dateStrClean.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?Z$/);
+        if (isoMatch) {
+            const [, year, month, day, hour, minute, second] = isoMatch.map(Number);
+            // Format trực tiếp từ UTC components - giữ nguyên giờ từ database
+            const dayStr = String(day).padStart(2, '0');
+            const monthStr = String(month).padStart(2, '0');
+            const hourStr = String(hour).padStart(2, '0');
+            const minuteStr = String(minute).padStart(2, '0');
+            const secondStr = String(second || 0).padStart(2, '0');
+            return `${dayStr}/${monthStr}/${year} ${hourStr}:${minuteStr}:${secondStr}`;
+        }
+    }
+    
+    // SQL Server format: "YYYY-MM-DD HH:mm:ss" (không có Z)
+    if (dateStrClean.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/)) {
+        const [datePart, timePart] = dateStrClean.split(' ');
+        const [year, month, day] = datePart.split('-').map(Number);
+        const [hour, minute, second] = timePart.split(':').map(Number);
+        const dayStr = String(day).padStart(2, '0');
+        const monthStr = String(month).padStart(2, '0');
+        const hourStr = String(hour).padStart(2, '0');
+        const minuteStr = String(minute).padStart(2, '0');
+        const secondStr = String(second || 0).padStart(2, '0');
+        return `${dayStr}/${monthStr}/${year} ${hourStr}:${minuteStr}:${secondStr}`;
+    }
+    
+    // Fallback: chỉ dùng khi không match các format trên
+    return dateStrClean;
 }
 
 async function updateDashboardCharts() {
@@ -3516,14 +3603,8 @@ function renderLichSuTable() {
             </thead>
             <tbody>
                 ${lichSuFilteredData.map(item => {
-                    const thoiGian = new Date(item.thoiGian).toLocaleString('vi-VN', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit'
-                    });
+                    // Sử dụng formatDateTime để hiển thị đúng thời gian từ database (có cả giây)
+                    const thoiGian = formatDateTime(item.thoiGian);
                     
                     const loaiIcon = {
                         'Tạo hóa đơn': '✅',
