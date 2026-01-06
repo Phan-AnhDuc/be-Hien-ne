@@ -1368,6 +1368,21 @@ function renderPhieuNhapCart() {
 
             <div class="form-group">
                 <label style="display: flex; align-items: center; gap: 6px;">
+                    <span>📅</span>
+                    <span>Ngày Nhập</span>
+                </label>
+                <input type="date" id="phieunhap-ngaynhap-input" 
+                       style="width: 100%; padding: 10px 14px; border: 2px solid #e8e8e8; border-radius: 8px; font-size: 13px; transition: all 0.3s ease;"
+                       onfocus="this.style.borderColor='#ff9800'; this.style.boxShadow='0 0 0 3px rgba(255, 152, 0, 0.1)'"
+                       onblur="this.style.borderColor='#e8e8e8'; this.style.boxShadow='none'">
+                <p style="font-size: 11px; color: #999; margin-top: 5px; display: flex; align-items: center; gap: 4px;">
+                    <span>💡</span>
+                    <span>Để trống sẽ dùng ngày hiện tại</span>
+                </p>
+            </div>
+
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 6px;">
                     <span>🏢</span>
                     <span>Nhà Cung Cấp</span>
                 </label>
@@ -1426,6 +1441,10 @@ async function createPhieuNhap() {
         const selectedNCCValue = document.getElementById('phieunhap-nhacungcap-select')?.value || '';
         const idNCC = selectedNCCValue ? parseInt(selectedNCCValue) : null;
         
+        // Lấy ngày nhập (nếu có)
+        const ngayNhapInput = document.getElementById('phieunhap-ngaynhap-input')?.value || '';
+        const ngayNhap = ngayNhapInput || null;
+        
         // Validate tồn kho tối thiểu nếu có nhà cung cấp
         if (idNCC) {
             const selectedNCC = phieuNhapNhacungcap.find(ncc => ncc.id === idNCC);
@@ -1441,10 +1460,14 @@ async function createPhieuNhap() {
         }
         
         // Tạo phiếu nhập
-        const phieuNhapRes = await apiPost('phieunhap', { 
+        const phieuNhapData = { 
             idNV: parseInt(selectedNVValue),
             idNCC: idNCC
-        });
+        };
+        if (ngayNhap) {
+            phieuNhapData.ngayNhap = ngayNhap;
+        }
+        const phieuNhapRes = await apiPost('phieunhap', phieuNhapData);
         if (!phieuNhapRes.success) {
             showAlert(phieuNhapRes.message || 'Lỗi tạo phiếu nhập', 'error');
             return;
@@ -2608,15 +2631,22 @@ async function loadBestSellingProducts() {
 
 async function loadSlowMovingProducts() {
     try {
-        // Get products with high stock but low sales
+        // Get all orders
         const response = await apiGet('hoadon');
         
         if (response.success && response.data) {
+            const now = new Date();
+            const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
             const productSales = {};
             
-            // Count sales for each product
-            for (const order of response.data.slice(0, 100)) { // Limit to recent orders
-                if (!order.id) continue;
+            // Count sales for each product in the last 90 days
+            for (const order of response.data) {
+                if (!order.id || !order.ngayLap) continue;
+                
+                // Parse order date
+                const orderDate = new Date(order.ngayLap);
+                if (orderDate < ninetyDaysAgo) continue; // Skip orders older than 90 days
+                
                 try {
                     const detailRes = await apiGet(`chitiethd/${order.id}`);
                     
@@ -2634,13 +2664,32 @@ async function loadSlowMovingProducts() {
                 }
             }
             
-            // Find products with high stock but low/no sales
+            // Find slow moving products:
+            // 1. Sau 30 ngày nhập hàng không sinh bất cứ hóa đơn nào
+            // 2. Số lượng bán trong 90 ngày gần nhất < 5 sản phẩm
             const slowMoving = dashboardData.products
                 .filter(p => {
-                    const sales = productSales[p.id] || 0;
-                    return p.soluong > 50 && sales < 10; // High stock, low sales
+                    if (!p.ngayNhapCuoi) return false;
+                    
+                    // Parse ngayNhapCuoi
+                    const ngayNhapCuoi = new Date(p.ngayNhapCuoi);
+                    const thirtyDaysAfterImport = new Date(ngayNhapCuoi.getTime() + 30 * 24 * 60 * 60 * 1000);
+                    
+                    // Điều kiện 1: Sau 30 ngày nhập hàng không sinh bất cứ hóa đơn nào
+                    const condition1 = now >= thirtyDaysAfterImport;
+                    
+                    // Điều kiện 2: Số lượng bán trong 90 ngày gần nhất < 5
+                    const salesIn90Days = productSales[p.id] || 0;
+                    const condition2 = salesIn90Days < 5;
+                    
+                    return condition1 && condition2;
                 })
-                .sort((a, b) => b.soluong - a.soluong)
+                .sort((a, b) => {
+                    // Sort by ngayNhapCuoi (oldest first)
+                    const dateA = new Date(a.ngayNhapCuoi || 0);
+                    const dateB = new Date(b.ngayNhapCuoi || 0);
+                    return dateA - dateB;
+                })
                 .slice(0, 5);
             
             const container = document.getElementById('slow-moving-warning');

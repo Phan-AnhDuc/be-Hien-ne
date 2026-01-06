@@ -1996,7 +1996,7 @@ app.get('/api/phieunhap/:id', async (req, res) => {
 
 // POST - Tạo phiếu nhập mới
 app.post('/api/phieunhap', async (req, res) => {
-    const { idNV, idNCC } = req.body;
+    const { idNV, idNCC, ngayNhap } = req.body;
     if (!idNV) {
         return res.status(400).json({
             success: false,
@@ -2049,12 +2049,24 @@ app.post('/api/phieunhap', async (req, res) => {
         }
         
         // Tạo phiếu nhập (server tự động sinh maPN)
-        const result = await pool.request()
-            .input('idNV', sql.Int, idNV)
-            .input('idNCC', sql.Int, idNCC || null)
-            .query(`INSERT INTO PHIEUNHAP (idNV, idNCC) 
+        let query, request;
+        if (ngayNhap) {
+            request = pool.request()
+                .input('idNV', sql.Int, idNV)
+                .input('idNCC', sql.Int, idNCC || null)
+                .input('ngayNhap', sql.DateTime, ngayNhap);
+            query = `INSERT INTO PHIEUNHAP (idNV, idNCC, ngayNhap) 
                     OUTPUT INSERTED.id, INSERTED.maPN, INSERTED.ngayNhap, INSERTED.idNV, INSERTED.idNCC, INSERTED.tongTien 
-                    VALUES (@idNV, @idNCC)`);
+                    VALUES (@idNV, @idNCC, @ngayNhap)`;
+        } else {
+            request = pool.request()
+                .input('idNV', sql.Int, idNV)
+                .input('idNCC', sql.Int, idNCC || null);
+            query = `INSERT INTO PHIEUNHAP (idNV, idNCC) 
+                    OUTPUT INSERTED.id, INSERTED.maPN, INSERTED.ngayNhap, INSERTED.idNV, INSERTED.idNCC, INSERTED.tongTien 
+                    VALUES (@idNV, @idNCC)`;
+        }
+        const result = await request.query(query);
 
         const phieuNhapData = result.recordset[0];
 
@@ -2335,10 +2347,27 @@ app.post('/api/chitietphieunhap', async (req, res) => {
                 .query('UPDATE CHITIET_PHIEUNHAP SET soluong = @soluong, dongia = @dongia WHERE idPN = @idPN AND idHang = @idHang');
             
             // Cập nhật lại kho (trigger chỉ chạy khi insert)
-            await pool.request()
-                .input('idHang', sql.Int, idHang)
-                .input('soluong', sql.Int, soluong)
-                .query('UPDATE HANGHOA SET soluong = soluong + @soluong, gianhap = @dongia, ngayNhapCuoi = CAST(GETDATE() AS DATE) WHERE id = @idHang');
+            // Lấy ngayNhap từ phiếu nhập
+            const phieuNhapResult = await pool.request()
+                .input('idPN', sql.Int, idPN)
+                .query('SELECT ngayNhap FROM PHIEUNHAP WHERE id = @idPN');
+            
+            if (phieuNhapResult.recordset.length > 0) {
+                const ngayNhap = phieuNhapResult.recordset[0].ngayNhap;
+                await pool.request()
+                    .input('idHang', sql.Int, idHang)
+                    .input('soluong', sql.Int, soluong)
+                    .input('dongia', sql.Money, dongia)
+                    .input('ngayNhap', sql.Date, ngayNhap)
+                    .query('UPDATE HANGHOA SET soluong = soluong + @soluong, gianhap = @dongia, ngayNhapCuoi = CAST(@ngayNhap AS DATE) WHERE id = @idHang');
+            } else {
+                // Fallback nếu không tìm thấy phiếu nhập
+                await pool.request()
+                    .input('idHang', sql.Int, idHang)
+                    .input('soluong', sql.Int, soluong)
+                    .input('dongia', sql.Money, dongia)
+                    .query('UPDATE HANGHOA SET soluong = soluong + @soluong, gianhap = @dongia, ngayNhapCuoi = CAST(GETDATE() AS DATE) WHERE id = @idHang');
+            }
         } else {
             // Thêm mới
             await pool.request()
@@ -2414,11 +2443,27 @@ app.put('/api/chitietphieunhap/:idPN/:idHang', async (req, res) => {
         
         // Cập nhật kho (cộng thêm nếu tăng, trừ nếu giảm)
         if (diffSoluong !== 0) {
-            await pool.request()
-                .input('idHang', sql.Int, idHang)
-                .input('soluong', sql.Int, diffSoluong)
-                .input('dongia', sql.Money, dongia)
-                .query('UPDATE HANGHOA SET soluong = soluong + @soluong, gianhap = @dongia, ngayNhapCuoi = CAST(GETDATE() AS DATE) WHERE id = @idHang');
+            // Lấy ngayNhap từ phiếu nhập
+            const phieuNhapResult = await pool.request()
+                .input('idPN', sql.Int, idPN)
+                .query('SELECT ngayNhap FROM PHIEUNHAP WHERE id = @idPN');
+            
+            if (phieuNhapResult.recordset.length > 0) {
+                const ngayNhap = phieuNhapResult.recordset[0].ngayNhap;
+                await pool.request()
+                    .input('idHang', sql.Int, idHang)
+                    .input('soluong', sql.Int, diffSoluong)
+                    .input('dongia', sql.Money, dongia)
+                    .input('ngayNhap', sql.Date, ngayNhap)
+                    .query('UPDATE HANGHOA SET soluong = soluong + @soluong, gianhap = @dongia, ngayNhapCuoi = CAST(@ngayNhap AS DATE) WHERE id = @idHang');
+            } else {
+                // Fallback nếu không tìm thấy phiếu nhập
+                await pool.request()
+                    .input('idHang', sql.Int, idHang)
+                    .input('soluong', sql.Int, diffSoluong)
+                    .input('dongia', sql.Money, dongia)
+                    .query('UPDATE HANGHOA SET soluong = soluong + @soluong, gianhap = @dongia, ngayNhapCuoi = CAST(GETDATE() AS DATE) WHERE id = @idHang');
+            }
         }
 
         res.status(200).json({

@@ -2473,16 +2473,23 @@
 
         async function loadSlowMovingProducts() {
             try {
-                // Get products with high stock but low sales
+                // Get all orders
                 const response = await fetch(`${API_BASE}/hoadon`);
                 const result = await response.json();
                 
                 if (result.success && result.data) {
+                    const now = new Date();
+                    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
                     const productSales = {};
                     
-                    // Count sales for each product
-                    for (const order of result.data.slice(0, 100)) { // Limit to recent orders
-                        if (!order.id) continue;
+                    // Count sales for each product in the last 90 days
+                    for (const order of result.data) {
+                        if (!order.id || !order.ngayLap) continue;
+                        
+                        // Parse order date
+                        const orderDate = new Date(order.ngayLap);
+                        if (orderDate < ninetyDaysAgo) continue; // Skip orders older than 90 days
+                        
                         try {
                             const detailRes = await fetch(`${API_BASE}/chitiethd/${order.id}`);
                             const detailResult = await detailRes.json();
@@ -2501,13 +2508,32 @@
                         }
                     }
                     
-                    // Find products with high stock but low/no sales
+                    // Find slow moving products:
+                    // 1. Sau 30 ngày nhập hàng không sinh bất cứ hóa đơn nào
+                    // 2. Số lượng bán trong 90 ngày gần nhất < 5 sản phẩm
                     const slowMoving = products
                         .filter(p => {
-                            const sales = productSales[p.id] || 0;
-                            return p.soluong > 50 && sales < 10; // High stock, low sales
+                            if (!p.ngayNhapCuoi) return false;
+                            
+                            // Parse ngayNhapCuoi
+                            const ngayNhapCuoi = new Date(p.ngayNhapCuoi);
+                            const thirtyDaysAfterImport = new Date(ngayNhapCuoi.getTime() + 30 * 24 * 60 * 60 * 1000);
+                            
+                            // Điều kiện 1: Sau 30 ngày nhập hàng không sinh bất cứ hóa đơn nào
+                            const condition1 = now >= thirtyDaysAfterImport;
+                            
+                            // Điều kiện 2: Số lượng bán trong 90 ngày gần nhất < 5
+                            const salesIn90Days = productSales[p.id] || 0;
+                            const condition2 = salesIn90Days < 5;
+                            
+                            return condition1 && condition2;
                         })
-                        .sort((a, b) => b.soluong - a.soluong)
+                        .sort((a, b) => {
+                            // Sort by ngayNhapCuoi (oldest first)
+                            const dateA = new Date(a.ngayNhapCuoi || 0);
+                            const dateB = new Date(b.ngayNhapCuoi || 0);
+                            return dateA - dateB;
+                        })
                         .slice(0, 5);
                     
                     const container = document.getElementById('slow-moving-warning');
@@ -2887,8 +2913,17 @@
                     const ordersData = await ordersRes.json();
                     
                     if (ordersData.success && ordersData.data) {
+                        const now = new Date();
+                        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
                         const productSales = {};
+                        
+                        // Count sales for each product in the last 90 days
                         for (const order of ordersData.data) {
+                            if (!order.id || !order.ngayLap) continue;
+                            
+                            const orderDate = new Date(order.ngayLap);
+                            if (orderDate < ninetyDaysAgo) continue;
+                            
                             try {
                                 const detailRes = await fetch(`${API_BASE}/chitiethoadon/${order.id}`);
                                 const detailData = await detailRes.json();
@@ -2902,12 +2937,31 @@
                             }
                         }
                         
+                        // Find slow moving products:
+                        // 1. Sau 30 ngày nhập hàng không sinh bất cứ hóa đơn nào
+                        // 2. Số lượng bán trong 90 ngày gần nhất < 5 sản phẩm
                         slowMovingItems = products
                             .filter(p => {
-                                const sales = productSales[p.id] || 0;
-                                return p.soluong > 50 && sales < 10;
+                                if (!p.ngayNhapCuoi) return false;
+                                
+                                const ngayNhapCuoi = new Date(p.ngayNhapCuoi);
+                                const thirtyDaysAfterImport = new Date(ngayNhapCuoi.getTime() + 30 * 24 * 60 * 60 * 1000);
+                                
+                                // Điều kiện 1: Sau 30 ngày nhập hàng không sinh bất cứ hóa đơn nào
+                                const condition1 = now >= thirtyDaysAfterImport;
+                                
+                                // Điều kiện 2: Số lượng bán trong 90 ngày gần nhất < 5
+                                const salesIn90Days = productSales[p.id] || 0;
+                                const condition2 = salesIn90Days < 5;
+                                
+                                return condition1 && condition2;
                             })
-                            .sort((a, b) => b.soluong - a.soluong)
+                            .sort((a, b) => {
+                                // Sort by ngayNhapCuoi (oldest first)
+                                const dateA = new Date(a.ngayNhapCuoi || 0);
+                                const dateB = new Date(b.ngayNhapCuoi || 0);
+                                return dateA - dateB;
+                            })
                             .slice(0, 10);
                     }
                 } catch (error) {
@@ -3311,10 +3365,16 @@
                 if (ordersData.success && ordersData.data) {
                     productSalesCache = {};
                     const productSales = {};
+                    const now = new Date();
+                    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
                     
-                    // Đếm số lượng bán của từng sản phẩm
-                    for (const order of ordersData.data.slice(0, 200)) { // Limit để tối ưu
-                        if (!order.id) continue;
+                    // Đếm số lượng bán của từng sản phẩm trong 90 ngày gần nhất
+                    for (const order of ordersData.data) {
+                        if (!order.id || !order.ngayLap) continue;
+                        
+                        const orderDate = new Date(order.ngayLap);
+                        if (orderDate < ninetyDaysAgo) continue; // Skip orders older than 90 days
+                        
                         try {
                             const detailRes = await fetch(`${API_BASE}/chitiethd/${order.id}`);
                             const detailResult = await detailRes.json();
@@ -3341,11 +3401,24 @@
                     const top20Percent = Math.max(1, Math.floor(sortedProducts.length * 0.2));
                     bestSellingProductsCache = sortedProducts.slice(0, top20Percent).map(([id]) => parseInt(id));
                     
-                    // Xác định sản phẩm bán chậm (tồn kho > 50 và số lượng bán < 10)
+                    // Xác định sản phẩm bán chậm:
+                    // 1. Sau 30 ngày nhập hàng không sinh bất cứ hóa đơn nào
+                    // 2. Số lượng bán trong 90 ngày gần nhất < 5 sản phẩm
                     slowMovingProductsCache = products
                         .filter(p => {
-                            const sales = productSales[p.id] || 0;
-                            return p.soluong > 50 && sales < 10;
+                            if (!p.ngayNhapCuoi) return false;
+                            
+                            const ngayNhapCuoi = new Date(p.ngayNhapCuoi);
+                            const thirtyDaysAfterImport = new Date(ngayNhapCuoi.getTime() + 30 * 24 * 60 * 60 * 1000);
+                            
+                            // Điều kiện 1: Sau 30 ngày nhập hàng không sinh bất cứ hóa đơn nào
+                            const condition1 = now >= thirtyDaysAfterImport;
+                            
+                            // Điều kiện 2: Số lượng bán trong 90 ngày gần nhất < 5
+                            const salesIn90Days = productSales[p.id] || 0;
+                            const condition2 = salesIn90Days < 5;
+                            
+                            return condition1 && condition2;
                         })
                         .map(p => p.id);
                 }
