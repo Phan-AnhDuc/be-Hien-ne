@@ -20,17 +20,80 @@ async function getDefaultCustomerTypeId() {
     const pool = await poolPromise;
     const result = await pool.request()
         .query(`SELECT TOP 1 id FROM PHANLOAI_KH WHERE tenPLKH LIKE N'%thành viên%' OR tenPLKH LIKE N'%Thanh vien%' ORDER BY id`);
-    
+
     if (result.recordset.length > 0) {
         return result.recordset[0].id;
     }
-    
+
     // Nếu không có, lấy loại đầu tiên
     const firstResult = await pool.request()
         .query(`SELECT TOP 1 id FROM PHANLOAI_KH ORDER BY id`);
-    
+
     return firstResult.recordset.length > 0 ? firstResult.recordset[0].id : null;
 }
+
+// Helper function để cập nhật phân loại cho TẤT CẢ khách hàng dựa trên tongchi
+// DISABLE trigger trước khi UPDATE để tránh bị ghi đè
+async function updateAllCustomerClassification() {
+    console.log('[updateAllCustomerClassification] ===== BẮT ĐẦU CẬP NHẬT PHÂN LOẠI KHÁCH HÀNG =====');
+    
+    try {
+        const pool = await poolPromise;
+        
+        // Bước 1: Liệt kê và DISABLE tất cả trigger trên bảng KHACHHANG
+        const triggersResult = await pool.request()
+            .query(`SELECT name FROM sys.triggers WHERE parent_id = OBJECT_ID('KHACHHANG')`);
+        const triggers = triggersResult.recordset.map(t => t.name);
+        console.log('[updateAllCustomerClassification] Các trigger trên KHACHHANG:', triggers);
+        
+        for (const triggerName of triggers) {
+            await pool.request().query(`DISABLE TRIGGER ${triggerName} ON KHACHHANG`);
+        }
+        console.log('[updateAllCustomerClassification] Đã DISABLE tất cả trigger');
+        
+        // Bước 2: Cập nhật phân loại
+        const result = await pool.request().query(`
+            UPDATE KHACHHANG
+            SET idPLKH = (
+                SELECT TOP 1 pl.id
+                FROM PHANLOAI_KH pl
+                WHERE pl.nguongChiMin <= KHACHHANG.tongchi
+                ORDER BY pl.nguongChiMin DESC
+            )
+            WHERE EXISTS (
+                SELECT 1 
+                FROM PHANLOAI_KH pl
+                WHERE pl.nguongChiMin <= KHACHHANG.tongchi
+            )
+        `);
+        
+        const rowsAffected = result.rowsAffected[0] || 0;
+        console.log(`[updateAllCustomerClassification] ✅ Đã cập nhật ${rowsAffected} khách hàng`);
+        
+        // Bước 3: ENABLE lại tất cả trigger
+        for (const triggerName of triggers) {
+            await pool.request().query(`ENABLE TRIGGER ${triggerName} ON KHACHHANG`);
+        }
+        console.log('[updateAllCustomerClassification] Đã ENABLE lại tất cả trigger');
+        
+        console.log('[updateAllCustomerClassification] ===== HOÀN TẤT =====');
+        
+        return rowsAffected;
+    } catch (err) {
+        console.error('[updateAllCustomerClassification] ❌ LỖI:', err.message);
+        
+        // Đảm bảo ENABLE lại trigger nếu có lỗi
+        try {
+            const pool = await poolPromise;
+            await pool.request().query(`ENABLE TRIGGER ALL ON KHACHHANG`);
+        } catch (e) {
+            console.error('[updateAllCustomerClassification] Không thể ENABLE lại trigger:', e.message);
+        }
+        
+        throw err;
+    }
+}
+
 
 // Helper function để đăng ký font tiếng Việt cho PDF
 function registerVietnameseFonts(doc) {
@@ -795,19 +858,19 @@ app.delete('/api/khuyenmai/:id', async (req, res) => {
     const { id } = req.params;
     try {
         const pool = await poolPromise;
-        
+
         // Kiểm tra xem khuyến mãi có đang được sử dụng trong hóa đơn không
         const checkUsage = await pool.request()
             .input('id', sql.Int, id)
             .query('SELECT COUNT(*) as count FROM HOADON WHERE idKM = @id');
-        
+
         if (checkUsage.recordset[0].count > 0) {
             // Nếu đang được sử dụng, set NULL cho các hóa đơn thay vì xóa
             await pool.request()
                 .input('id', sql.Int, id)
                 .query('UPDATE HOADON SET idKM = NULL WHERE idKM = @id');
         }
-        
+
         // Xóa khuyến mãi
         const result = await pool.request()
             .input('id', sql.Int, id)
@@ -993,10 +1056,85 @@ app.delete('/api/nhanvien/:id', async (req, res) => {
 });
 
 // ================== KHACHHANG APIs ==================
-// GET all
+
+// API cập nhật lại phân loại cho tất cả khách hàng (DISABLE trigger trước)
+app.post('/api/khachhang/sync-phanloai', async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        
+        // Bước 1: Liệt kê tất cả trigger trên bảng KHACHHANG
+        const triggersResult = await pool.request()
+            .query(`
+                SELECT name 
+                FROM sys.triggers 
+                WHERE parent_id = OBJECT_ID('KHACHHANG')
+            `);
+        const triggers = triggersResult.recordset.map(t => t.name);
+        console.log('[sync-phanloai] Các trigger trên bảng KHACHHANG:', triggers);
+        
+        // Bước 2: DISABLE tất cả trigger trên bảng KHACHHANG
+        for (const triggerName of triggers) {
+            await pool.request().query(`DISABLE TRIGGER ${triggerName} ON KHACHHANG`);
+            console.log(`[sync-phanloai] Đã DISABLE trigger: ${triggerName}`);
+        }
+        
+        // Bước 3: Cập nhật phân loại cho tất cả khách hàng
+        const result = await pool.request()
+            .query(`
+                UPDATE KHACHHANG
+                SET idPLKH = (
+                    SELECT TOP 1 pl.id
+                    FROM PHANLOAI_KH pl
+                    WHERE pl.nguongChiMin <= KHACHHANG.tongchi
+                    ORDER BY pl.nguongChiMin DESC
+                )
+                WHERE EXISTS (
+                    SELECT 1 
+                    FROM PHANLOAI_KH pl
+                    WHERE pl.nguongChiMin <= KHACHHANG.tongchi
+                )
+            `);
+        console.log(`[sync-phanloai] Đã cập nhật ${result.rowsAffected[0]} khách hàng`);
+        
+        // Bước 4: ENABLE lại tất cả trigger
+        for (const triggerName of triggers) {
+            await pool.request().query(`ENABLE TRIGGER ${triggerName} ON KHACHHANG`);
+            console.log(`[sync-phanloai] Đã ENABLE trigger: ${triggerName}`);
+        }
+        
+        // Bước 5: Lấy danh sách khách hàng sau khi cập nhật
+        const customers = await pool.request()
+            .query(`
+                SELECT k.id, k.maKH, k.tenKH, k.tongchi, k.idPLKH, p.tenPLKH, p.nguongChiMin
+                FROM KHACHHANG k
+                LEFT JOIN PHANLOAI_KH p ON k.idPLKH = p.id
+                ORDER BY k.tongchi DESC
+            `);
+
+        res.status(200).json({
+            success: true,
+            message: `Đã cập nhật phân loại cho ${result.rowsAffected[0]} khách hàng`,
+            triggers: triggers,
+            data: customers.recordset
+        });
+    } catch (err) {
+        console.error('[sync-phanloai] Lỗi:', err.message);
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi khi cập nhật phân loại khách hàng',
+            error: err.message
+        });
+    }
+});
+
+// GET all - Tự động cập nhật phân loại trước khi trả về
 app.get('/api/khachhang', async (req, res) => {
     try {
         const pool = await poolPromise;
+        
+        // Cập nhật phân loại cho tất cả khách hàng trước khi trả về
+        await updateAllCustomerClassification();
+        
         const result = await pool.request()
             .query(`SELECT k.id, k.maKH, k.tenKH, k.sdt, k.diachi, k.idPLKH, k.diemtichluy, k.tongchi, p.tenPLKH
                     FROM KHACHHANG k
@@ -1060,7 +1198,7 @@ app.post('/api/khachhang', async (req, res) => {
     }
     try {
         const pool = await poolPromise;
-        
+
         // Mặc định là thành viên nếu không có idPLKH
         let finalIdPLKH = idPLKH;
         if (!finalIdPLKH) {
@@ -1072,7 +1210,7 @@ app.post('/api/khachhang', async (req, res) => {
                 });
             }
         }
-        
+
         const result = await pool.request()
             .input('tenKH', sql.NVarChar(40), tenKH)
             .input('sdt', sql.VarChar(10), sdt || null)
@@ -1415,13 +1553,13 @@ app.post('/api/hoadon', async (req, res) => {
     }
     try {
         const pool = await poolPromise;
-        
+
         // Nếu có điểm đã dùng, trừ điểm của khách hàng trước
         if (diemDaDung && diemDaDung > 0 && idKH) {
             const customerResult = await pool.request()
                 .input('idKH', sql.Int, idKH)
                 .query('SELECT diemtichluy FROM KHACHHANG WHERE id = @idKH');
-            
+
             if (customerResult.recordset.length > 0) {
                 const currentPoints = customerResult.recordset[0].diemtichluy || 0;
                 if (currentPoints < diemDaDung) {
@@ -1430,7 +1568,7 @@ app.post('/api/hoadon', async (req, res) => {
                         message: `Khách hàng không đủ điểm. Hiện có: ${currentPoints}, yêu cầu: ${diemDaDung}`
                     });
                 }
-                
+
                 // Trừ điểm
                 await pool.request()
                     .input('idKH', sql.Int, idKH)
@@ -1438,7 +1576,7 @@ app.post('/api/hoadon', async (req, res) => {
                     .query('UPDATE KHACHHANG SET diemtichluy = diemtichluy - @diemDaDung WHERE id = @idKH');
             }
         }
-        
+
         // Tạo hóa đơn (lưu điểm đã dùng nếu có)
         // Note: Cần chạy ALTER TABLE HOADON ADD diemDaDung INT DEFAULT 0; trước
         let result;
@@ -1499,32 +1637,32 @@ app.put('/api/hoadon/:id', async (req, res) => {
     }
     try {
         const pool = await poolPromise;
-        
+
         // Tính lại tổng tiền từ chi tiết
         const totalResult = await pool.request()
             .input('idHD', sql.Int, id)
             .query('SELECT SUM(thanhTien) as tongTien FROM CHITIET_HD WHERE idHD = @idHD');
-        
+
         const tongTien = totalResult.recordset[0].tongTien || 0;
-        
+
         // Áp dụng khuyến mãi nếu có
         let finalTongTien = tongTien;
         if (idKM) {
             const kmResult = await pool.request()
                 .input('idKM', sql.Int, idKM)
                 .query('SELECT phantramGiam FROM KHUYENMAI WHERE id = @idKM');
-            
+
             if (kmResult.recordset.length > 0) {
                 const phantramGiam = kmResult.recordset[0].phantramGiam;
                 finalTongTien = tongTien * (1 - phantramGiam / 100);
             }
         }
-        
+
         // Áp dụng giảm giá từ điểm (1 điểm = 1000đ)
         if (diemDaDung && diemDaDung > 0) {
             finalTongTien = Math.max(0, finalTongTien - (diemDaDung * 1000));
         }
-        
+
         // Update hóa đơn, bao gồm diemDaDung nếu có
         let updateQuery = 'UPDATE HOADON SET idNV = @idNV, idKH = @idKH, idKM = @idKM, tongTien = @tongTien, loaiGiaoDich = @loaiGiaoDich';
         const request = pool.request()
@@ -1534,12 +1672,12 @@ app.put('/api/hoadon/:id', async (req, res) => {
             .input('idKM', sql.Int, idKM || null)
             .input('tongTien', sql.Money, finalTongTien)
             .input('loaiGiaoDich', sql.NVarChar(20), loaiGiaoDich || 'Bán hàng');
-        
+
         if (diemDaDung !== undefined && diemDaDung !== null) {
             updateQuery += ', diemDaDung = @diemDaDung';
             request.input('diemDaDung', sql.Int, diemDaDung);
         }
-        
+
         updateQuery += ' WHERE id = @id';
         const result = await request.query(updateQuery);
 
@@ -1554,7 +1692,7 @@ app.put('/api/hoadon/:id', async (req, res) => {
         const hdResult = await pool.request()
             .input('id', sql.Int, id)
             .query('SELECT maHD FROM HOADON WHERE id = @id');
-        
+
         const maHD = hdResult.recordset[0]?.maHD;
         if (maHD) {
             const tongTienFormatted = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(finalTongTien);
@@ -1582,22 +1720,22 @@ app.delete('/api/hoadon/:id', async (req, res) => {
     const { idNV } = req.body; // Lấy idNV từ body nếu có
     try {
         const pool = await poolPromise;
-        
+
         // Lấy thông tin trước khi xóa để ghi log
         const beforeDelete = await pool.request()
             .input('id', sql.Int, id)
             .query('SELECT maHD, idNV FROM HOADON WHERE id = @id');
-        
+
         if (beforeDelete.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy hóa đơn'
             });
         }
-        
+
         const maHD = beforeDelete.recordset[0].maHD;
         const logIdNV = idNV || beforeDelete.recordset[0].idNV;
-        
+
         const result = await pool.request()
             .input('id', sql.Int, id)
             .query('DELETE FROM HOADON WHERE id = @id');
@@ -1727,19 +1865,19 @@ app.post('/api/chitiethd', async (req, res) => {
     }
     try {
         const pool = await poolPromise;
-        
+
         // Kiểm tra tồn kho
         const stockResult = await pool.request()
             .input('idHang', sql.Int, idHang)
             .query('SELECT soluong FROM HANGHOA WHERE id = @idHang');
-        
+
         if (stockResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy hàng hóa'
             });
         }
-        
+
         const currentStock = stockResult.recordset[0].soluong;
         if (currentStock < soluong) {
             return res.status(400).json({
@@ -1747,7 +1885,7 @@ app.post('/api/chitiethd', async (req, res) => {
                 message: `Số lượng trong kho không đủ. Hiện có: ${currentStock}, yêu cầu: ${soluong}`
             });
         }
-        
+
         // Thêm chi tiết hóa đơn (trigger sẽ tự động trừ kho và tích điểm)
         // Không dùng OUTPUT vì bảng có trigger, phải query lại sau khi insert
         await pool.request()
@@ -1763,8 +1901,28 @@ app.post('/api/chitiethd', async (req, res) => {
             .input('idHang', sql.Int, idHang)
             .query('SELECT idHD, idHang, soluong, dongia, thanhTien FROM CHITIET_HD WHERE idHD = @idHD AND idHang = @idHang');
 
-        // Cập nhật tổng tiền hóa đơn
+        // Lấy idKH từ hóa đơn trước khi cập nhật tổng tiền
+        const hdResult = await pool.request()
+            .input('idHD', sql.Int, idHD)
+            .query('SELECT idKH FROM HOADON WHERE id = @idHD');
+
+        const idKH = hdResult.recordset.length > 0 ? hdResult.recordset[0].idKH : null;
+
+        // Cập nhật tổng tiền hóa đơn (hàm này sẽ tự động gọi updateAllCustomerClassification)
         await recalculateInvoiceTotal(idHD);
+        
+        // Đợi một chút để đảm bảo trigger đã cập nhật tongchi xong
+        // Sau đó mới cập nhật phân loại
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Cập nhật phân loại cho tất cả khách hàng sau khi tạo hóa đơn
+        console.log('[POST /api/chitiethd] ===== GỌI HÀM updateAllCustomerClassification() =====');
+        try {
+            await updateAllCustomerClassification();
+            console.log('[POST /api/chitiethd] ===== ĐÃ GỌI XONG updateAllCustomerClassification() =====');
+        } catch (err) {
+            console.error('[POST /api/chitiethd] Lỗi khi gọi updateAllCustomerClassification:', err.message);
+        }
 
         res.status(201).json({
             success: true,
@@ -1792,36 +1950,36 @@ app.put('/api/chitiethd/:idHD/:idHang', async (req, res) => {
     }
     try {
         const pool = await poolPromise;
-        
+
         // Lấy số lượng cũ
         const oldResult = await pool.request()
             .input('idHD', sql.Int, idHD)
             .input('idHang', sql.Int, idHang)
             .query('SELECT soluong FROM CHITIET_HD WHERE idHD = @idHD AND idHang = @idHang');
-        
+
         if (oldResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy chi tiết hóa đơn'
             });
         }
-        
+
         const oldSoluong = oldResult.recordset[0].soluong;
         const diffSoluong = soluong - oldSoluong;
-        
+
         // Kiểm tra tồn kho nếu tăng số lượng
         if (diffSoluong > 0) {
             const stockResult = await pool.request()
                 .input('idHang', sql.Int, idHang)
                 .query('SELECT soluong FROM HANGHOA WHERE id = @idHang');
-            
+
             if (stockResult.recordset.length === 0) {
                 return res.status(404).json({
                     success: false,
                     message: 'Không tìm thấy hàng hóa'
                 });
             }
-            
+
             const currentStock = stockResult.recordset[0].soluong;
             if (currentStock < diffSoluong) {
                 return res.status(400).json({
@@ -1829,7 +1987,7 @@ app.put('/api/chitiethd/:idHD/:idHang', async (req, res) => {
                     message: `Số lượng trong kho không đủ. Hiện có: ${currentStock}, cần thêm: ${diffSoluong}`
                 });
             }
-            
+
             // Trừ thêm kho
             await pool.request()
                 .input('idHang', sql.Int, idHang)
@@ -1842,7 +2000,7 @@ app.put('/api/chitiethd/:idHD/:idHang', async (req, res) => {
                 .input('soluong', sql.Int, -diffSoluong)
                 .query('UPDATE HANGHOA SET soluong = soluong + @soluong WHERE id = @idHang');
         }
-        
+
         const result = await pool.request()
             .input('idHD', sql.Int, idHD)
             .input('idHang', sql.Int, idHang)
@@ -1879,22 +2037,22 @@ app.delete('/api/chitiethd/:idHD/:idHang', async (req, res) => {
     const { idHD, idHang } = req.params;
     try {
         const pool = await poolPromise;
-        
+
         // Lấy số lượng trước khi xóa
         const detailResult = await pool.request()
             .input('idHD', sql.Int, idHD)
             .input('idHang', sql.Int, idHang)
             .query('SELECT soluong FROM CHITIET_HD WHERE idHD = @idHD AND idHang = @idHang');
-        
+
         if (detailResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy chi tiết hóa đơn'
             });
         }
-        
+
         const soluong = detailResult.recordset[0].soluong;
-        
+
         // Xóa chi tiết
         const result = await pool.request()
             .input('idHD', sql.Int, idHD)
@@ -2005,7 +2163,7 @@ app.post('/api/phieunhap', async (req, res) => {
     }
     try {
         const pool = await poolPromise;
-        
+
         // Kiểm tra nhân viên có quyền (quản lý hoặc thủ kho)
         const nvResult = await pool.request()
             .input('idNV', sql.Int, idNV)
@@ -2013,17 +2171,17 @@ app.post('/api/phieunhap', async (req, res) => {
                     FROM NHANVIEN nv
                     LEFT JOIN VITRI vt ON nv.idVT = vt.id
                     WHERE nv.id = @idNV`);
-        
+
         if (nvResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy nhân viên'
             });
         }
-        
+
         const nv = nvResult.recordset[0];
         const tenVT = (nv.tenVT || '').toLowerCase();
-        
+
         // Chỉ cho phép quản lý và thủ kho
         // if (!tenVT.includes('quản lý') && !tenVT.includes('quan ly') && 
         //     !tenVT.includes('thủ kho') && !tenVT.includes('thu kho') &&
@@ -2033,13 +2191,13 @@ app.post('/api/phieunhap', async (req, res) => {
         //         message: 'Chỉ quản lý và thủ kho mới có quyền tạo phiếu nhập'
         //     });
         // }
-        
+
         // Kiểm tra nhà cung cấp nếu có
         if (idNCC) {
             const nccResult = await pool.request()
                 .input('idNCC', sql.Int, idNCC)
                 .query('SELECT id FROM NHACUNGCAP WHERE id = @idNCC AND trangthai = 1');
-            
+
             if (nccResult.recordset.length === 0) {
                 return res.status(404).json({
                     success: false,
@@ -2047,7 +2205,7 @@ app.post('/api/phieunhap', async (req, res) => {
                 });
             }
         }
-        
+
         // Tạo phiếu nhập (server tự động sinh maPN)
         let query, request;
         if (ngayNhap) {
@@ -2100,7 +2258,7 @@ app.put('/api/phieunhap/:id', async (req, res) => {
     }
     try {
         const pool = await poolPromise;
-        
+
         // Kiểm tra quyền nhân viên
         const nvResult = await pool.request()
             .input('idNV', sql.Int, idNV)
@@ -2108,16 +2266,16 @@ app.put('/api/phieunhap/:id', async (req, res) => {
                     FROM NHANVIEN nv
                     LEFT JOIN VITRI vt ON nv.idVT = vt.id
                     WHERE nv.id = @idNV`);
-        
+
         if (nvResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy nhân viên'
             });
         }
-        
+
         const tenVT = (nvResult.recordset[0].tenVT || '').toLowerCase();
-        if (!tenVT.includes('quản lý') && !tenVT.includes('quan ly') && 
+        if (!tenVT.includes('quản lý') && !tenVT.includes('quan ly') &&
             !tenVT.includes('thủ kho') && !tenVT.includes('thu kho') &&
             !tenVT.includes('warehouse') && !tenVT.includes('manager')) {
             return res.status(403).json({
@@ -2125,7 +2283,7 @@ app.put('/api/phieunhap/:id', async (req, res) => {
                 message: 'Chỉ quản lý và thủ kho mới có quyền cập nhật phiếu nhập'
             });
         }
-        
+
         const result = await pool.request()
             .input('id', sql.Int, id)
             .input('idNV', sql.Int, idNV)
@@ -2148,7 +2306,7 @@ app.put('/api/phieunhap/:id', async (req, res) => {
                     WHERE p.id = @id`);
 
         const phieuNhapData = updatedResult.recordset[0];
-        
+
         // Ghi lịch sử hoạt động
         const moTa = `Sửa phiếu nhập ${phieuNhapData.maPN}`;
         await ghiLichSuHoatDong(idNV, 'Sửa phiếu nhập', moTa, phieuNhapData.maPN, phieuNhapData.id);
@@ -2173,27 +2331,27 @@ app.delete('/api/phieunhap/:id', async (req, res) => {
     const { idNV } = req.body; // Lấy idNV từ body nếu có
     try {
         const pool = await poolPromise;
-        
+
         // Lấy thông tin trước khi xóa để ghi log
         const beforeDelete = await pool.request()
             .input('id', sql.Int, id)
             .query('SELECT maPN, idNV FROM PHIEUNHAP WHERE id = @id');
-        
+
         if (beforeDelete.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy phiếu nhập'
             });
         }
-        
+
         const maPN = beforeDelete.recordset[0].maPN;
         const logIdNV = idNV || beforeDelete.recordset[0].idNV;
-        
+
         // Lấy chi tiết trước khi xóa để trừ lại kho
         const detailResult = await pool.request()
             .input('idPN', sql.Int, id)
             .query('SELECT idHang, soluong FROM CHITIET_PHIEUNHAP WHERE idPN = @idPN');
-        
+
         // Xóa phiếu nhập (trigger sẽ tự động xóa chi tiết và cập nhật kho)
         const result = await pool.request()
             .input('id', sql.Int, id)
@@ -2205,7 +2363,7 @@ app.delete('/api/phieunhap/:id', async (req, res) => {
                 message: 'Không tìm thấy phiếu nhập'
             });
         }
-        
+
         // Trừ lại hàng trong kho (vì trigger chỉ cộng khi insert, không trừ khi delete)
         for (const detail of detailResult.recordset) {
             await pool.request()
@@ -2303,55 +2461,55 @@ app.post('/api/chitietphieunhap', async (req, res) => {
     }
     try {
         const pool = await poolPromise;
-        
+
         // Kiểm tra phiếu nhập tồn tại
         const phieuResult = await pool.request()
             .input('idPN', sql.Int, idPN)
             .query('SELECT id FROM PHIEUNHAP WHERE id = @idPN');
-        
+
         if (phieuResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy phiếu nhập'
             });
         }
-        
+
         // Kiểm tra hàng hóa tồn tại
         const hangResult = await pool.request()
             .input('idHang', sql.Int, idHang)
             .query('SELECT id, maHang, tenHang FROM HANGHOA WHERE id = @idHang');
-        
+
         if (hangResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy hàng hóa'
             });
         }
-        
+
         // Kiểm tra chi tiết đã tồn tại chưa
         const existingResult = await pool.request()
             .input('idPN', sql.Int, idPN)
             .input('idHang', sql.Int, idHang)
             .query('SELECT soluong FROM CHITIET_PHIEUNHAP WHERE idPN = @idPN AND idHang = @idHang');
-        
+
         if (existingResult.recordset.length > 0) {
             // Nếu đã tồn tại, cập nhật số lượng
             const oldSoluong = existingResult.recordset[0].soluong;
             const newSoluong = oldSoluong + soluong;
-            
+
             await pool.request()
                 .input('idPN', sql.Int, idPN)
                 .input('idHang', sql.Int, idHang)
                 .input('soluong', sql.Int, newSoluong)
                 .input('dongia', sql.Money, dongia)
                 .query('UPDATE CHITIET_PHIEUNHAP SET soluong = @soluong, dongia = @dongia WHERE idPN = @idPN AND idHang = @idHang');
-            
+
             // Cập nhật lại kho (trigger chỉ chạy khi insert)
             // Lấy ngayNhap từ phiếu nhập
             const phieuNhapResult = await pool.request()
                 .input('idPN', sql.Int, idPN)
                 .query('SELECT ngayNhap FROM PHIEUNHAP WHERE id = @idPN');
-            
+
             if (phieuNhapResult.recordset.length > 0) {
                 const ngayNhap = phieuNhapResult.recordset[0].ngayNhap;
                 await pool.request()
@@ -2416,23 +2574,23 @@ app.put('/api/chitietphieunhap/:idPN/:idHang', async (req, res) => {
     }
     try {
         const pool = await poolPromise;
-        
+
         // Lấy số lượng cũ
         const oldResult = await pool.request()
             .input('idPN', sql.Int, idPN)
             .input('idHang', sql.Int, idHang)
             .query('SELECT soluong FROM CHITIET_PHIEUNHAP WHERE idPN = @idPN AND idHang = @idHang');
-        
+
         if (oldResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy chi tiết phiếu nhập'
             });
         }
-        
+
         const oldSoluong = oldResult.recordset[0].soluong;
         const diffSoluong = soluong - oldSoluong;
-        
+
         // Cập nhật chi tiết
         await pool.request()
             .input('idPN', sql.Int, idPN)
@@ -2440,14 +2598,14 @@ app.put('/api/chitietphieunhap/:idPN/:idHang', async (req, res) => {
             .input('soluong', sql.Int, soluong)
             .input('dongia', sql.Money, dongia)
             .query('UPDATE CHITIET_PHIEUNHAP SET soluong = @soluong, dongia = @dongia WHERE idPN = @idPN AND idHang = @idHang');
-        
+
         // Cập nhật kho (cộng thêm nếu tăng, trừ nếu giảm)
         if (diffSoluong !== 0) {
             // Lấy ngayNhap từ phiếu nhập
             const phieuNhapResult = await pool.request()
                 .input('idPN', sql.Int, idPN)
                 .query('SELECT ngayNhap FROM PHIEUNHAP WHERE id = @idPN');
-            
+
             if (phieuNhapResult.recordset.length > 0) {
                 const ngayNhap = phieuNhapResult.recordset[0].ngayNhap;
                 await pool.request()
@@ -2485,22 +2643,22 @@ app.delete('/api/chitietphieunhap/:idPN/:idHang', async (req, res) => {
     const { idPN, idHang } = req.params;
     try {
         const pool = await poolPromise;
-        
+
         // Lấy số lượng trước khi xóa
         const detailResult = await pool.request()
             .input('idPN', sql.Int, idPN)
             .input('idHang', sql.Int, idHang)
             .query('SELECT soluong FROM CHITIET_PHIEUNHAP WHERE idPN = @idPN AND idHang = @idHang');
-        
+
         if (detailResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy chi tiết phiếu nhập'
             });
         }
-        
+
         const soluong = detailResult.recordset[0].soluong;
-        
+
         // Xóa chi tiết
         const result = await pool.request()
             .input('idPN', sql.Int, idPN)
@@ -2536,94 +2694,97 @@ app.delete('/api/chitietphieunhap/:idPN/:idHang', async (req, res) => {
 // Helper function to recalculate invoice total and apply discount
 async function recalculateInvoiceTotal(idHD) {
     const pool = await poolPromise;
-    
+
     // Calculate total from invoice details
     const totalResult = await pool.request()
         .input('idHD', sql.Int, idHD)
         .query('SELECT SUM(thanhTien) as tongTien FROM CHITIET_HD WHERE idHD = @idHD');
-    
+
     const tongTien = totalResult.recordset[0].tongTien || 0;
-    
+
     // Get invoice discount and points used
     const invoiceResult = await pool.request()
         .input('idHD', sql.Int, idHD)
         .query('SELECT idKM, ISNULL(diemDaDung, 0) as diemDaDung FROM HOADON WHERE id = @idHD');
-    
+
     let finalTongTien = tongTien;
     if (invoiceResult.recordset.length > 0) {
         const invoice = invoiceResult.recordset[0];
-        
+
         // Áp dụng mã giảm giá
         if (invoice.idKM) {
             const idKM = invoice.idKM;
             const kmResult = await pool.request()
                 .input('idKM', sql.Int, idKM)
                 .query('SELECT phantramGiam FROM KHUYENMAI WHERE id = @idKM');
-            
+
             if (kmResult.recordset.length > 0) {
                 const phantramGiam = kmResult.recordset[0].phantramGiam;
                 finalTongTien = tongTien * (1 - phantramGiam / 100);
             }
         }
-        
+
         // Áp dụng giảm giá từ điểm (1 điểm = 1000đ)
         const diemDaDung = invoice.diemDaDung || 0;
         if (diemDaDung > 0) {
             finalTongTien = Math.max(0, finalTongTien - (diemDaDung * 1000));
         }
     }
-    
+
     // Update invoice total
     await pool.request()
         .input('idHD', sql.Int, idHD)
         .input('tongTien', sql.Money, finalTongTien)
         .query('UPDATE HOADON SET tongTien = @tongTien WHERE id = @idHD');
+    
+    // KHÔNG gọi updateAllCustomerClassification ở đây
+    // Vì sẽ được gọi sau khi thêm chi tiết hóa đơn (trong POST /api/chitiethd)
 }
 
 // ================== TRẢ HÀNG API ==================
 app.post('/api/hoadon/:id/tra-hang', async (req, res) => {
     const { id } = req.params;
     const { items } = req.body; // [{ idHang, soluong }]
-    
+
     if (!items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({
             success: false,
             message: 'Thiếu danh sách sản phẩm trả hàng'
         });
     }
-    
+
     try {
         const pool = await poolPromise;
-        
+
         // Kiểm tra hóa đơn tồn tại
         const invoiceResult = await pool.request()
             .input('idHD', sql.Int, id)
             .query('SELECT id FROM HOADON WHERE id = @idHD');
-        
+
         if (invoiceResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy hóa đơn'
             });
         }
-        
+
         // Kiểm tra và cộng lại hàng vào kho
         for (const item of items) {
             const { idHang, soluong } = item;
-            
+
             // Kiểm tra chi tiết hóa đơn
             const detailResult = await pool.request()
                 .input('idHD', sql.Int, id)
                 .input('idHang', sql.Int, idHang)
                 .query('SELECT soluong FROM CHITIET_HD WHERE idHD = @idHD AND idHang = @idHang');
-            
+
             if (detailResult.recordset.length === 0) {
                 return res.status(404).json({
                     success: false,
                     message: `Không tìm thấy sản phẩm trong hóa đơn`
                 });
             }
-            
+
             const invoiceQty = detailResult.recordset[0].soluong;
             if (soluong > invoiceQty) {
                 return res.status(400).json({
@@ -2631,13 +2792,13 @@ app.post('/api/hoadon/:id/tra-hang', async (req, res) => {
                     message: `Số lượng trả (${soluong}) vượt quá số lượng đã bán (${invoiceQty})`
                 });
             }
-            
+
             // Cộng lại hàng vào kho
             await pool.request()
                 .input('idHang', sql.Int, idHang)
                 .input('soluong', sql.Int, soluong)
                 .query('UPDATE HANGHOA SET soluong = soluong + @soluong WHERE id = @idHang');
-            
+
             // Cập nhật hoặc xóa chi tiết hóa đơn
             if (soluong === invoiceQty) {
                 // Xóa nếu trả hết
@@ -2654,10 +2815,10 @@ app.post('/api/hoadon/:id/tra-hang', async (req, res) => {
                     .query('UPDATE CHITIET_HD SET soluong = @soluong, dongia = dongia WHERE idHD = @idHD AND idHang = @idHang');
             }
         }
-        
+
         // Recalculate invoice total
         await recalculateInvoiceTotal(id);
-        
+
         res.status(200).json({
             success: true,
             message: 'Trả hàng thành công',
@@ -2676,30 +2837,30 @@ app.post('/api/hoadon/:id/tra-hang', async (req, res) => {
 app.post('/api/hoadon/:id/doi-hang', async (req, res) => {
     const { id } = req.params;
     const { idHangCu, idHangMoi, soluong } = req.body;
-    
+
     if (!idHangCu || !idHangMoi || !soluong) {
         return res.status(400).json({
             success: false,
             message: 'Thiếu thông tin: idHangCu, idHangMoi, soluong'
         });
     }
-    
+
     try {
         const pool = await poolPromise;
-        
+
         // Kiểm tra hóa đơn và chi tiết cũ
         const oldDetailResult = await pool.request()
             .input('idHD', sql.Int, id)
             .input('idHangCu', sql.Int, idHangCu)
             .query('SELECT soluong, dongia FROM CHITIET_HD WHERE idHD = @idHD AND idHang = @idHangCu');
-        
+
         if (oldDetailResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy sản phẩm cũ trong hóa đơn'
             });
         }
-        
+
         const oldDetail = oldDetailResult.recordset[0];
         if (soluong > oldDetail.soluong) {
             return res.status(400).json({
@@ -2707,19 +2868,19 @@ app.post('/api/hoadon/:id/doi-hang', async (req, res) => {
                 message: `Số lượng đổi (${soluong}) vượt quá số lượng đã bán (${oldDetail.soluong})`
             });
         }
-        
+
         // Kiểm tra tồn kho hàng mới
         const newStockResult = await pool.request()
             .input('idHangMoi', sql.Int, idHangMoi)
             .query('SELECT soluong, giaban FROM HANGHOA WHERE id = @idHangMoi');
-        
+
         if (newStockResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy hàng hóa mới'
             });
         }
-        
+
         const newStock = newStockResult.recordset[0];
         if (newStock.soluong < soluong) {
             return res.status(400).json({
@@ -2727,19 +2888,19 @@ app.post('/api/hoadon/:id/doi-hang', async (req, res) => {
                 message: `Số lượng trong kho không đủ. Hiện có: ${newStock.soluong}, yêu cầu: ${soluong}`
             });
         }
-        
+
         // Cộng lại hàng cũ vào kho
         await pool.request()
             .input('idHangCu', sql.Int, idHangCu)
             .input('soluong', sql.Int, soluong)
             .query('UPDATE HANGHOA SET soluong = soluong + @soluong WHERE id = @idHangCu');
-        
+
         // Trừ hàng mới khỏi kho
         await pool.request()
             .input('idHangMoi', sql.Int, idHangMoi)
             .input('soluong', sql.Int, soluong)
             .query('UPDATE HANGHOA SET soluong = soluong - @soluong WHERE id = @idHangMoi');
-        
+
         // Cập nhật chi tiết hóa đơn
         if (soluong === oldDetail.soluong) {
             // Đổi toàn bộ: xóa cũ, thêm mới
@@ -2747,7 +2908,7 @@ app.post('/api/hoadon/:id/doi-hang', async (req, res) => {
                 .input('idHD', sql.Int, id)
                 .input('idHangCu', sql.Int, idHangCu)
                 .query('DELETE FROM CHITIET_HD WHERE idHD = @idHD AND idHang = @idHangCu');
-            
+
             const newTongtien = soluong * newStock.giaban;
             await pool.request()
                 .input('idHD', sql.Int, id)
@@ -2763,13 +2924,13 @@ app.post('/api/hoadon/:id/doi-hang', async (req, res) => {
                 .input('idHangCu', sql.Int, idHangCu)
                 .input('soluong', sql.Int, remainingQty)
                 .query('UPDATE CHITIET_HD SET soluong = @soluong WHERE idHD = @idHD AND idHang = @idHangCu');
-            
+
             // Kiểm tra xem hàng mới đã có trong hóa đơn chưa
             const existingNewDetail = await pool.request()
                 .input('idHD', sql.Int, id)
                 .input('idHangMoi', sql.Int, idHangMoi)
                 .query('SELECT soluong, dongia FROM CHITIET_HD WHERE idHD = @idHD AND idHang = @idHangMoi');
-            
+
             if (existingNewDetail.recordset.length > 0) {
                 // Cộng thêm vào chi tiết đã có
                 const newQty = existingNewDetail.recordset[0].soluong + soluong;
@@ -2789,10 +2950,10 @@ app.post('/api/hoadon/:id/doi-hang', async (req, res) => {
                     .query('INSERT INTO CHITIET_HD (idHD, idHang, soluong, dongia) VALUES (@idHD, @idHangMoi, @soluong, @dongia)');
             }
         }
-        
+
         // Recalculate invoice total
         await recalculateInvoiceTotal(id);
-        
+
         res.status(200).json({
             success: true,
             message: 'Đổi hàng thành công',
@@ -2811,10 +2972,10 @@ app.post('/api/hoadon/:id/doi-hang', async (req, res) => {
 app.get('/api/hoadon/:id/export', async (req, res) => {
     const { id } = req.params;
     const { format } = req.query; // 'json' or 'excel'
-    
+
     try {
         const pool = await poolPromise;
-        
+
         // Get invoice data with all related information
         const invoiceResult = await pool.request()
             .input('idHD', sql.Int, id)
@@ -2828,16 +2989,16 @@ app.get('/api/hoadon/:id/export', async (req, res) => {
                     LEFT JOIN KHACHHANG kh ON h.idKH = kh.id
                     LEFT JOIN KHUYENMAI km ON h.idKM = km.id
                     WHERE h.id = @idHD`);
-        
+
         if (invoiceResult.recordset.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'Không tìm thấy hóa đơn'
             });
         }
-        
+
         const invoice = invoiceResult.recordset[0];
-        
+
         // Get invoice details with product information
         const detailsResult = await pool.request()
             .input('idHD', sql.Int, id)
@@ -2847,16 +3008,16 @@ app.get('/api/hoadon/:id/export', async (req, res) => {
                     INNER JOIN HANGHOA hh ON cthd.idHang = hh.id
                     WHERE cthd.idHD = @idHD
                     ORDER BY hh.maHang`);
-        
+
         const details = detailsResult.recordset;
-        
+
         // Calculate amounts
         const subtotal = details.reduce((sum, item) => sum + (parseFloat(item.thanhTien) || 0), 0);
         const tienGiamGiaCode = invoice.idKM ? (subtotal * (invoice.phantramGiam || 0) / 100) : 0;
         const diemDaDung = invoice.diemDaDung || 0;
         const tienGiamGiaDiem = diemDaDung * 1000; // 1 điểm = 1000đ
         const thanhTien = parseFloat(invoice.tongTien) || 0;
-        
+
         // Prepare response data
         const invoiceData = {
             thongTinHoaDon: {
@@ -2891,13 +3052,13 @@ app.get('/api/hoadon/:id/export', async (req, res) => {
                 tongtien: parseFloat(item.thanhTien)
             }))
         };
-        
+
         // Return JSON or Excel based on format parameter
         if (format === 'excel') {
             // Create Excel file
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Hóa Đơn');
-            
+
             // Set column widths
             worksheet.columns = [
                 { width: 10 }, // STT
@@ -2907,38 +3068,38 @@ app.get('/api/hoadon/:id/export', async (req, res) => {
                 { width: 15 }, // Đơn giá
                 { width: 15 }  // Thành tiền
             ];
-            
+
             // Header row
             worksheet.mergeCells('A1:F1');
             worksheet.getCell('A1').value = 'HÓA ĐƠN BÁN HÀNG';
             worksheet.getCell('A1').font = { size: 16, bold: true };
             worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
-            
+
             // Invoice info
             worksheet.mergeCells('A2:F2');
             worksheet.getCell('A2').value = `Mã hóa đơn: ${invoice.maHD} | Ngày lập: ${new Date(invoice.ngayLap).toLocaleDateString('vi-VN')}`;
             worksheet.getCell('A2').alignment = { horizontal: 'center' };
-            
+
             // Customer info
             if (invoice.tenKhachHang) {
                 worksheet.mergeCells('A3:F3');
                 worksheet.getCell('A3').value = `Khách hàng: ${invoice.tenKhachHang}${invoice.diachi ? ' | Địa chỉ: ' + invoice.diachi : ''}${invoice.sdt ? ' | SĐT: ' + invoice.sdt : ''}`;
             }
-            
+
             // Staff info
             worksheet.mergeCells('A4:F4');
             worksheet.getCell('A4').value = `Nhân viên: ${invoice.tenNhanVien || 'N/A'}`;
-            
+
             // Discount code
             if (invoice.maKM) {
                 worksheet.mergeCells('A5:F5');
                 worksheet.getCell('A5').value = `Mã giảm giá: ${invoice.maKM} (${invoice.phantramGiam}%)${invoice.tenKhuyenMai ? ' - ' + invoice.tenKhuyenMai : ''}`;
                 worksheet.getCell('A5').font = { color: { argb: 'FF0066CC' } };
             }
-            
+
             // Empty row
             worksheet.getRow(6).height = 5;
-            
+
             // Table header
             const headerRow = worksheet.getRow(7);
             headerRow.values = ['STT', 'Mã hàng', 'Tên hàng', 'Số lượng', 'Đơn giá', 'Thành tiền'];
@@ -2950,7 +3111,7 @@ app.get('/api/hoadon/:id/export', async (req, res) => {
             };
             headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
             headerRow.height = 25;
-            
+
             // Data rows
             details.forEach((item, index) => {
                 const row = worksheet.getRow(8 + index);
@@ -2965,19 +3126,19 @@ app.get('/api/hoadon/:id/export', async (req, res) => {
                 row.getCell(5).numFmt = '#,##0';
                 row.getCell(6).numFmt = '#,##0';
             });
-            
+
             // Summary row
             const summaryRowIndex = 8 + details.length;
-            
+
             worksheet.mergeCells(`A${summaryRowIndex}:D${summaryRowIndex}`);
             worksheet.getCell(`A${summaryRowIndex}`).value = 'Tổng tiền:';
             worksheet.getCell(`A${summaryRowIndex}`).font = { bold: true };
             worksheet.getCell(`E${summaryRowIndex}`).value = subtotal.toLocaleString('vi-VN');
             worksheet.getCell(`E${summaryRowIndex}`).numFmt = '#,##0';
             worksheet.getCell(`E${summaryRowIndex}`).font = { bold: true };
-            
+
             let currentRow = summaryRowIndex + 1;
-            
+
             if (tienGiamGiaCode > 0) {
                 worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
                 worksheet.getCell(`A${currentRow}`).value = 'Giảm giá (Mã):';
@@ -2986,7 +3147,7 @@ app.get('/api/hoadon/:id/export', async (req, res) => {
                 worksheet.getCell(`E${currentRow}`).font = { color: { argb: 'FFCC0000' } };
                 currentRow++;
             }
-            
+
             if (tienGiamGiaDiem > 0) {
                 worksheet.mergeCells(`A${currentRow}:D${currentRow}`);
                 worksheet.getCell(`A${currentRow}`).value = 'Giảm giá (Điểm):';
@@ -2995,7 +3156,7 @@ app.get('/api/hoadon/:id/export', async (req, res) => {
                 worksheet.getCell(`E${currentRow}`).font = { color: { argb: 'FF059669' } };
                 currentRow++;
             }
-            
+
             const finalRowIndex = currentRow;
             worksheet.mergeCells(`A${finalRowIndex}:D${finalRowIndex}`);
             worksheet.getCell(`A${finalRowIndex}`).value = 'Thành tiền:';
@@ -3003,17 +3164,17 @@ app.get('/api/hoadon/:id/export', async (req, res) => {
             worksheet.getCell(`E${finalRowIndex}`).value = thanhTien.toLocaleString('vi-VN');
             worksheet.getCell(`E${finalRowIndex}`).numFmt = '#,##0';
             worksheet.getCell(`E${finalRowIndex}`).font = { size: 12, bold: true };
-            
+
             // Footer
             worksheet.mergeCells(`A${finalRowIndex + 2}:F${finalRowIndex + 2}`);
             worksheet.getCell(`A${finalRowIndex + 2}`).value = 'Cảm ơn quý khách đã sử dụng dịch vụ!';
             worksheet.getCell(`A${finalRowIndex + 2}`).alignment = { horizontal: 'center' };
             worksheet.getCell(`A${finalRowIndex + 2}`).font = { italic: true };
-            
+
             // Set response headers
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', `attachment; filename="HoaDon_${invoice.maHD}.xlsx"`);
-            
+
             // Write to response
             await workbook.xlsx.write(res);
             res.end();
@@ -3381,7 +3542,7 @@ app.get('/api/hoadon/:id/pdf', async (req, res) => {
         yPos += 25;
         const summaryBoxWidth = 240;
         const summaryBoxLeft = pageWidth - margin - summaryBoxWidth;
-        
+
         // Calculate summary height based on discounts
         let summaryHeight = 70;
         if (tienGiamGiaCode > 0) summaryHeight += 25;
@@ -3471,12 +3632,12 @@ app.get('/api/hoadon/:id/pdf', async (req, res) => {
 // ================== THỐNG KÊ DOANH THU API ==================
 app.get('/api/thongke/doanhthu', async (req, res) => {
     const { period, startDate, endDate, idNV } = req.query; // period: 'day', 'week', 'month', 'quarter', 'year'
-    
+
     try {
         const pool = await poolPromise;
         let query = '';
         const hasIdNV = idNV && idNV !== '';
-        
+
         if (period === 'day' && startDate && endDate) {
             query = `SELECT 
                         CAST(h.ngayLap AS DATE) as ngay,
@@ -3619,14 +3780,14 @@ app.get('/api/thongke/doanhthu', async (req, res) => {
                 message: 'Thiếu thông tin period hoặc startDate/endDate'
             });
         }
-        
+
         const request = pool.request();
         if (startDate) request.input('startDate', sql.Date, startDate);
         if (endDate) request.input('endDate', sql.Date, endDate);
         if (hasIdNV) request.input('idNV', sql.Int, parseInt(idNV));
-        
+
         const result = await request.query(query);
-        
+
         res.status(200).json({
             success: true,
             count: result.recordset.length,
@@ -3644,14 +3805,14 @@ app.get('/api/thongke/doanhthu', async (req, res) => {
 // ================== XUẤT BÁO CÁO DOANH THU ==================
 app.get('/api/thongke/doanhthu/export', async (req, res) => {
     const { period, startDate, endDate, idNV, format = 'pdf' } = req.query;
-    
+
     try {
         const pool = await poolPromise;
-        
+
         // Lấy dữ liệu thống kê (dùng lại logic từ API thống kê)
         let query = '';
         const hasIdNV = idNV && idNV !== '';
-        
+
         if (period === 'day' && startDate && endDate) {
             query = `SELECT 
                         CAST(h.ngayLap AS DATE) as ngay,
@@ -3701,35 +3862,35 @@ app.get('/api/thongke/doanhthu/export', async (req, res) => {
                 message: 'Thiếu thông tin period hoặc startDate/endDate'
             });
         }
-        
+
         const request = pool.request();
         if (startDate) request.input('startDate', sql.Date, startDate);
         if (endDate) request.input('endDate', sql.Date, endDate);
         if (hasIdNV) request.input('idNV', sql.Int, parseInt(idNV));
-        
+
         const result = await request.query(query);
         const data = result.recordset;
-        
+
         // Tính tổng
         const totalRevenue = data.reduce((sum, item) => sum + (parseFloat(item.tongDoanhThu) || 0), 0);
         const totalOrders = data.reduce((sum, item) => sum + (parseInt(item.soHoaDon) || 0), 0);
-        
+
         if (format === 'excel') {
             // Xuất Excel
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Báo Cáo Doanh Thu');
-            
+
             // Header
             worksheet.mergeCells('A1:F1');
             worksheet.getCell('A1').value = 'BÁO CÁO DOANH THU';
             worksheet.getCell('A1').font = { size: 16, bold: true };
             worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
-            
+
             worksheet.mergeCells('A2:F2');
             const periodText = period === 'day' ? 'Theo Ngày' : period === 'month' ? 'Theo Tháng' : 'Theo Năm';
             worksheet.getCell('A2').value = `${periodText} - Từ ${startDate} đến ${endDate}`;
             worksheet.getCell('A2').alignment = { horizontal: 'center' };
-            
+
             worksheet.getRow(4).values = ['STT', period === 'day' ? 'Ngày' : period === 'month' ? 'Tháng/Năm' : 'Năm', 'Nhân Viên', 'Số Hóa Đơn', 'Tổng Doanh Thu', 'Ghi Chú'];
             worksheet.getRow(4).font = { bold: true };
             worksheet.getRow(4).fill = {
@@ -3737,7 +3898,7 @@ app.get('/api/thongke/doanhthu/export', async (req, res) => {
                 pattern: 'solid',
                 fgColor: { argb: 'FFE0E0E0' }
             };
-            
+
             // Data
             data.forEach((item, index) => {
                 const row = worksheet.addRow([
@@ -3750,7 +3911,7 @@ app.get('/api/thongke/doanhthu/export', async (req, res) => {
                 ]);
                 row.getCell(5).numFmt = '#,##0';
             });
-            
+
             // Tổng
             worksheet.addRow([]);
             const totalRow = worksheet.addRow(['TỔNG CỘNG', '', '', totalOrders, totalRevenue, '']);
@@ -3761,15 +3922,15 @@ app.get('/api/thongke/doanhthu/export', async (req, res) => {
                 fgColor: { argb: 'FFFFE0' }
             };
             totalRow.getCell(5).numFmt = '#,##0';
-            
+
             // Auto fit columns
             worksheet.columns.forEach(column => {
                 column.width = 15;
             });
-            
+
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', `attachment; filename="BaoCaoDoanhThu_${period}_${startDate}_${endDate}.xlsx"`);
-            
+
             await workbook.xlsx.write(res);
             res.end();
         } else {
@@ -3778,31 +3939,31 @@ app.get('/api/thongke/doanhthu/export', async (req, res) => {
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="BaoCaoDoanhThu_${period}_${startDate}_${endDate}.pdf"`);
             doc.pipe(res);
-            
+
             // Đăng ký font tiếng Việt
             const { vietnameseFont, vietnameseFontBold } = registerVietnameseFonts(doc);
-            
+
             // Header
             doc.fontSize(20).font(vietnameseFontBold).text('BÁO CÁO DOANH THU', { align: 'center' });
             doc.moveDown();
             const periodText = period === 'day' ? 'Theo Ngày' : period === 'month' ? 'Theo Tháng' : 'Theo Năm';
             doc.fontSize(12).font(vietnameseFont).text(`${periodText} - Từ ${startDate} đến ${endDate}`, { align: 'center' });
             doc.moveDown(2);
-            
+
             // Table header
             const tableTop = doc.y;
             const colWidths = [50, 100, 150, 100, 120, 100];
             const colX = [50, 100, 200, 350, 450, 570];
-            
+
             doc.fontSize(10).font(vietnameseFontBold);
             doc.text('STT', colX[0], tableTop);
             doc.text(period === 'day' ? 'Ngày' : period === 'month' ? 'Tháng/Năm' : 'Năm', colX[1], tableTop);
             doc.text('Nhân Viên', colX[2], tableTop);
             doc.text('Số HĐ', colX[3], tableTop);
             doc.text('Doanh Thu', colX[4], tableTop);
-            
+
             doc.moveTo(50, tableTop + 20).lineTo(670, tableTop + 20).stroke();
-            
+
             // Data rows
             let y = tableTop + 30;
             doc.font(vietnameseFont).fontSize(9);
@@ -3819,7 +3980,7 @@ app.get('/api/thongke/doanhthu/export', async (req, res) => {
                 doc.text(parseFloat(item.tongDoanhThu || 0).toLocaleString('vi-VN') + ' đ', colX[4], y);
                 y += 20;
             });
-            
+
             // Tổng
             doc.moveTo(50, y).lineTo(670, y).stroke();
             y += 10;
@@ -3827,7 +3988,7 @@ app.get('/api/thongke/doanhthu/export', async (req, res) => {
             doc.text('TỔNG CỘNG', colX[0], y);
             doc.text(totalOrders.toString(), colX[3], y);
             doc.text(totalRevenue.toLocaleString('vi-VN') + ' đ', colX[4], y);
-            
+
             doc.end();
         }
     } catch (err) {
@@ -3842,39 +4003,39 @@ app.get('/api/thongke/doanhthu/export', async (req, res) => {
 // ================== XUẤT BÁO CÁO LỊCH SỬ HOẠT ĐỘNG ==================
 app.get('/api/lichsu/export', async (req, res) => {
     const { loaiHoatDong, format = 'pdf' } = req.query;
-    
+
     try {
         const pool = await poolPromise;
-        
+
         let query = `SELECT TOP 200
                     ls.id, ls.idNV, ls.loaiHoatDong, ls.moTa, ls.thamChieu, ls.idThamChieu, ls.thoiGian,
                     nv.maNV, nv.tenNV as tenNhanVien
                     FROM LICHSU_HOATDONG ls
                     LEFT JOIN NHANVIEN nv ON ls.idNV = nv.id
                     WHERE 1=1`;
-        
+
         const request = pool.request();
-        
+
         if (loaiHoatDong) {
             query += ' AND ls.loaiHoatDong = @loaiHoatDong';
             request.input('loaiHoatDong', sql.NVarChar(50), loaiHoatDong);
         }
-        
+
         query += ' ORDER BY ls.thoiGian DESC';
-        
+
         const result = await request.query(query);
         const data = result.recordset;
-        
+
         if (format === 'excel') {
             // Xuất Excel
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Lịch Sử Hoạt Động');
-            
+
             worksheet.mergeCells('A1:E1');
             worksheet.getCell('A1').value = 'BÁO CÁO LỊCH SỬ HOẠT ĐỘNG';
             worksheet.getCell('A1').font = { size: 16, bold: true };
             worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
-            
+
             worksheet.getRow(3).values = ['STT', 'Thời Gian', 'Nhân Viên', 'Loại Hoạt Động', 'Mô Tả', 'Tham Chiếu'];
             worksheet.getRow(3).font = { bold: true };
             worksheet.getRow(3).fill = {
@@ -3882,7 +4043,7 @@ app.get('/api/lichsu/export', async (req, res) => {
                 pattern: 'solid',
                 fgColor: { argb: 'FFE0E0E0' }
             };
-            
+
             data.forEach((item, index) => {
                 const thoiGian = new Date(item.thoiGian).toLocaleString('vi-VN');
                 worksheet.addRow([
@@ -3894,14 +4055,14 @@ app.get('/api/lichsu/export', async (req, res) => {
                     item.thamChieu || '-'
                 ]);
             });
-            
+
             worksheet.columns.forEach(column => {
                 column.width = 20;
             });
-            
+
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', `attachment; filename="BaoCaoLichSu_${new Date().toISOString().split('T')[0]}.xlsx"`);
-            
+
             await workbook.xlsx.write(res);
             res.end();
         } else {
@@ -3910,17 +4071,17 @@ app.get('/api/lichsu/export', async (req, res) => {
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="BaoCaoLichSu_${new Date().toISOString().split('T')[0]}.pdf"`);
             doc.pipe(res);
-            
+
             // Đăng ký font tiếng Việt
             const { vietnameseFont, vietnameseFontBold } = registerVietnameseFonts(doc);
-            
+
             doc.fontSize(20).font(vietnameseFontBold).text('BÁO CÁO LỊCH SỬ HOẠT ĐỘNG', { align: 'center' });
             doc.moveDown(2);
-            
+
             const tableTop = doc.y;
             const colWidths = [50, 120, 120, 120, 200, 100];
             const colX = [50, 100, 220, 340, 460, 660];
-            
+
             doc.fontSize(9).font(vietnameseFontBold);
             doc.text('STT', colX[0], tableTop);
             doc.text('Thời Gian', colX[1], tableTop);
@@ -3928,9 +4089,9 @@ app.get('/api/lichsu/export', async (req, res) => {
             doc.text('Loại HĐ', colX[3], tableTop);
             doc.text('Mô Tả', colX[4], tableTop);
             doc.text('Tham Chiếu', colX[5], tableTop);
-            
+
             doc.moveTo(50, tableTop + 15).lineTo(760, tableTop + 15).stroke();
-            
+
             let y = tableTop + 25;
             doc.font(vietnameseFont).fontSize(8);
             data.forEach((item, index) => {
@@ -3957,7 +4118,7 @@ app.get('/api/lichsu/export', async (req, res) => {
                 doc.text(item.thamChieu || '-', colX[5], y);
                 y += 20;
             });
-            
+
             doc.end();
         }
     } catch (err) {
@@ -4164,30 +4325,30 @@ app.get('/api/lichsu', async (req, res) => {
     try {
         const pool = await poolPromise;
         const { idNV, loaiHoatDong, limit = 100 } = req.query;
-        
+
         let query = `SELECT TOP ${limit} 
                     ls.id, ls.idNV, ls.loaiHoatDong, ls.moTa, ls.thamChieu, ls.idThamChieu, ls.thoiGian,
                     nv.maNV, nv.tenNV as tenNhanVien
                     FROM LICHSU_HOATDONG ls
                     LEFT JOIN NHANVIEN nv ON ls.idNV = nv.id
                     WHERE 1=1`;
-        
+
         const request = pool.request();
-        
+
         if (idNV) {
             query += ' AND ls.idNV = @idNV';
             request.input('idNV', sql.Int, parseInt(idNV));
         }
-        
+
         if (loaiHoatDong) {
             query += ' AND ls.loaiHoatDong = @loaiHoatDong';
             request.input('loaiHoatDong', sql.NVarChar(50), loaiHoatDong);
         }
-        
+
         query += ' ORDER BY ls.thoiGian DESC';
-        
+
         const result = await request.query(query);
-        
+
         res.status(200).json({
             success: true,
             data: result.recordset
