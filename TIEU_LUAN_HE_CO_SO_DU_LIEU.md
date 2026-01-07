@@ -227,264 +227,790 @@ User → Frontend → API Request → Backend → Database → Response → Fron
 
 ### CHƯƠNG 5. XÂY DỰNG BÀI TOÁN QUẢN LÝ
 
-#### 5.1. Phân tích yêu cầu và thiết kế hệ thống
+#### 5.1. Xây dựng hệ thống ban đầu
 
-**5.1.1. Phân tích nghiệp vụ:**
+**5.1.1. Thiết lập môi trường phát triển:**
 
-Hệ thống quản lý cửa hàng FMSTYLE cần đáp ứng các nghiệp vụ chính:
+Hệ thống được xây dựng trên nền tảng Node.js với các công nghệ hiện đại:
 
-1. **Quản lý hàng hóa:**
-   - Thêm, sửa, xóa hàng hóa
-   - Theo dõi tồn kho
-   - Cảnh báo hàng sắp hết
-   - Quản lý giá nhập và giá bán
-
-2. **Quản lý bán hàng:**
-   - Tạo hóa đơn
-   - Chọn sản phẩm từ kho
-   - Áp dụng khuyến mãi
-   - Sử dụng điểm tích lũy
-   - Xuất hóa đơn PDF/Excel
-
-3. **Quản lý khách hàng:**
-   - Lưu trữ thông tin khách hàng
-   - Theo dõi điểm tích lũy
-   - Phân loại khách hàng
-
-4. **Quản lý nhân viên:**
-   - Thêm, sửa, xóa nhân viên
-   - Phân quyền theo vai trò
-   - Theo dõi hoạt động
-
-5. **Quản lý phiếu nhập:**
-   - Tạo phiếu nhập hàng
-   - Tự động cộng kho
-   - Cập nhật giá nhập
-
-6. **Thống kê và báo cáo:**
-   - Doanh thu theo thời gian
-   - Sản phẩm bán chạy
-   - Nhân viên xuất sắc
-
-**5.1.2. Thiết kế cơ sở dữ liệu:**
-
-**Các bảng chính:**
-
-1. **VITRI**: Vị trí nhân viên (Quản lý, Thủ kho, Bán hàng)
-2. **NHANVIEN**: Thông tin nhân viên
-3. **USERS**: Tài khoản đăng nhập
-4. **KHACHHANG**: Thông tin khách hàng
-5. **HANGHOA**: Thông tin hàng hóa
-6. **HOADON**: Hóa đơn bán hàng
-7. **CHITIET_HD**: Chi tiết hóa đơn
-8. **PHIEUNHAP**: Phiếu nhập hàng
-9. **CHITIET_PHIEUNHAP**: Chi tiết phiếu nhập
-10. **NHACUNGCAP**: Nhà cung cấp
-11. **KHUYENMAI**: Khuyến mãi
-12. **PHANLOAI_KH**: Phân loại khách hàng
-13. **PHANLOAI_SANPHAM**: Phân loại sản phẩm
-14. **LICHSU_HOATDONG**: Lịch sử hoạt động
-
-**Mối quan hệ giữa các bảng:**
-- NHANVIEN → VITRI (nhiều-nhiều)
-- HOADON → NHANVIEN, KHACHHANG, KHUYENMAI
-- CHITIET_HD → HOADON, HANGHOA
-- PHIEUNHAP → NHANVIEN, NHACUNGCAP
-- CHITIET_PHIEUNHAP → PHIEUNHAP, HANGHOA
-
-#### 5.2. Xây dựng hệ thống ban đầu
-
-**5.2.1. Cài đặt môi trường:**
-
+**Cài đặt các công cụ cần thiết:**
 ```bash
-# Cài đặt Node.js và npm
-# Tạo project mới
+# Cài đặt Node.js (phiên bản >= 14.x)
+# Tạo thư mục dự án
+mkdir be-Hien-ne
+cd be-Hien-ne
+
+# Khởi tạo project Node.js
 npm init -y
 
-# Cài đặt các package cần thiết
+# Cài đặt các package backend
 npm install express mssql cors dotenv
 npm install pdfkit exceljs
+
+# Cài đặt công cụ phát triển
 npm install nodemon --save-dev
 ```
 
-**5.2.2. Cấu trúc thư mục:**
+**Cấu hình file package.json:**
+```json
+{
+  "name": "demo-connect-sql-server",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
+    "express": "^5.1.0",
+    "mssql": "^12.1.1",
+    "pdfkit": "^0.15.0"
+  }
+}
+```
+
+**5.1.2. Cấu trúc thư mục dự án:**
 
 ```
 be-Hien-ne/
-├── server.js              # Backend API server
-├── db.config.js           # Database configuration
-├── package.json           # Dependencies
-├── README.md             # Documentation
+├── server.js                          # Backend API server (4208 dòng)
+├── db.config.js                       # Cấu hình kết nối database
+├── package.json                        # Dependencies và scripts
+├── package-lock.json                  # Lock file dependencies
+├── README.md                          # Tài liệu hướng dẫn
+├── TIEU_LUAN_HE_CO_SO_DU_LIEU.md      # Tài liệu tiểu luận
+│
+├── CREATE_PHIEUNHAP.sql               # Script tạo bảng phiếu nhập
+├── CREATE_LICHSU_HOATDONG.sql         # Script tạo bảng lịch sử
+├── UPDATE_PHIEUNHAP_ADD_NCC.sql       # Script cập nhật nhà cung cấp
+├── UPDATE_TRIGGER_NGAYNHAPCUOI.sql    # Script cập nhật trigger
+│
 ├── src/
-│   ├── pages/            # Frontend pages
-│   │   ├── login.html
-│   │   ├── admin.html
-│   │   ├── staff.html
-│   │   └── warehouse.html
-│   ├── js/               # JavaScript files
-│   │   ├── api.js
-│   │   ├── auth.js
-│   │   ├── app.js
-│   │   └── pages.js
-│   └── css/              # Stylesheets
-│       └── style.css
+│   ├── pages/                         # Các trang HTML
+│   │   ├── login.html                 # Trang đăng nhập
+│   │   ├── admin.html                 # Trang quản trị (Admin)
+│   │   ├── staff.html                 # Trang nhân viên bán hàng
+│   │   └── warehouse.html             # Trang thủ kho
+│   │
+│   ├── js/                            # JavaScript files
+│   │   ├── api.js                     # API client functions
+│   │   ├── auth.js                     # Authentication logic
+│   │   ├── app.js                     # Admin panel logic
+│   │   └── pages.js                    # Page configurations
+│   │
+│   ├── css/                           # Stylesheets
+│   │   └── style.css                  # Global styles
+│   │
+│   ├── partials/                      # HTML partials
+│   │   ├── modal.html                 # Modal components
+│   │   └── sidebar.html               # Sidebar component
+│   │
+│   └── assets/                        # Static assets
+│       ├── 1.png                      # Background image
+│       └── FM.jpg                      # Logo
+│
+└── node_modules/                      # Dependencies
 ```
 
-**5.2.3. Tạo database và các bảng:**
+**5.1.3. Cấu hình kết nối database:**
 
-Sử dụng các script SQL trong file `README.md` để tạo database và các bảng với đầy đủ ràng buộc, triggers, và indexes.
+File `db.config.js` được thiết lập để kết nối với SQL Server:
 
-#### 5.3. Thiết kế API và Backend
+```javascript
+require('dotenv').config();
+const sql = require('mssql');
 
-**5.3.1. Các API endpoints chính:**
+const config = {
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    server: process.env.DB_SERVER,
+    database: process.env.DB_DATABASE,
+    port: parseInt(process.env.DB_PORT),
+    options: {
+        encrypt: false,
+        trustServerCertificate: true
+    },
+    pool: {
+        max: 10,
+        min: 0,
+        idleTimeoutMillis: 30000
+    }
+};
+```
 
-**Authentication:**
-- `POST /api/login` - Đăng nhập
+**5.1.4. Tạo database và các bảng:**
 
-**Hàng Hóa:**
-- `GET /api/hanghoa` - Lấy danh sách hàng hóa
-- `POST /api/hanghoa` - Tạo hàng hóa mới
-- `PUT /api/hanghoa/:id` - Cập nhật hàng hóa
-- `DELETE /api/hanghoa/:id` - Xóa hàng hóa
+Hệ thống sử dụng database `HeThongQuanLyCuaHang_FMSTYLE` với 14 bảng chính:
 
-**Hóa Đơn:**
-- `GET /api/hoadon` - Lấy danh sách hóa đơn
-- `POST /api/hoadon` - Tạo hóa đơn mới
-- `GET /api/hoadon/:id` - Lấy chi tiết hóa đơn
-- `GET /api/hoadon/:id/pdf` - Xuất PDF hóa đơn
-- `GET /api/hoadon/:id/export` - Xuất Excel/JSON
+1. **VITRI** - Quản lý vị trí nhân viên
+2. **PHANLOAI_KH** - Phân loại khách hàng
+3. **PHANLOAI_SANPHAM** - Phân loại sản phẩm
+4. **KHUYENMAI** - Quản lý khuyến mãi
+5. **NHANVIEN** - Thông tin nhân viên
+6. **USERS** - Tài khoản đăng nhập
+7. **KHACHHANG** - Thông tin khách hàng
+8. **HANGHOA** - Thông tin hàng hóa
+9. **HOADON** - Hóa đơn bán hàng
+10. **CHITIET_HD** - Chi tiết hóa đơn
+11. **PHIEUNHAP** - Phiếu nhập hàng
+12. **CHITIET_PHIEUNHAP** - Chi tiết phiếu nhập
+13. **NHACUNGCAP** - Nhà cung cấp
+14. **LICHSU_HOATDONG** - Lịch sử hoạt động
 
-**Phiếu Nhập:**
-- `GET /api/phieunhap` - Lấy danh sách phiếu nhập
-- `POST /api/phieunhap` - Tạo phiếu nhập mới
-- `GET /api/chitietphieunhap/:idPN` - Lấy chi tiết phiếu nhập
+**5.1.5. Thiết lập Backend Server:**
 
-**Thống Kê:**
-- `GET /api/thongke/doanhthu` - Thống kê doanh thu
+File `server.js` được cấu hình với Express.js:
 
-**5.3.2. Xử lý logic nghiệp vụ:**
+```javascript
+const express = require('express');
+const cors = require('cors');
+const { poolPromise, sql } = require('./db.config');
 
-- Xác thực và phân quyền người dùng
-- Validate dữ liệu đầu vào
-- Xử lý lỗi và trả về response phù hợp
-- Ghi log lịch sử hoạt động
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-#### 5.4. Thiết kế giao diện người dùng
+app.use(cors());
+app.use(express.json());
+app.use(express.static('src'));
 
-**5.4.1. Trang đăng nhập (login.html):**
-- Form đăng nhập với username và password
-- Xử lý lỗi đăng nhập
-- Chuyển hướng theo vai trò người dùng
+// Khởi động server
+app.listen(PORT, () => {
+    console.log(`Server đang chạy tại http://localhost:${PORT}`);
+});
+```
 
-**5.4.2. Trang Admin (admin.html):**
-- Dashboard tổng quan
-- Quản lý các danh mục (Vị trí, Phân loại KH, Phân loại SP, Khuyến mãi)
-- Quản lý nhân viên, khách hàng, hàng hóa
-- Quản lý hóa đơn và phiếu nhập
-- Thống kê và báo cáo
+**5.1.6. Thiết lập Frontend:**
 
-**5.4.3. Trang Staff (staff.html):**
-- Dashboard với thống kê nhanh
-- Kho hàng hóa với tìm kiếm
-- Tạo hóa đơn với giỏ hàng
-- Danh sách hóa đơn
-- Quản lý khách hàng
-- Thống kê doanh thu
-- Phiếu nhập hàng
-- Trả hàng và đổi hàng
+Frontend được xây dựng với HTML5, CSS3 và Vanilla JavaScript, không sử dụng framework để đảm bảo hiệu năng và dễ bảo trì.
 
-**5.4.4. Trang Warehouse (warehouse.html):**
-- Dashboard tổng quan
-- Quản lý phiếu nhập hàng
-- Quản lý hàng hóa
-- Lịch sử hoạt động
+#### 5.2. Nhập dữ liệu cho các bảng
 
-**5.4.5. Tính năng giao diện:**
+**5.2.1. Nhập dữ liệu danh mục gốc:**
+
+**Bảng VITRI (Vị trí nhân viên):**
+```sql
+INSERT INTO VITRI (tenVT) VALUES 
+(N'Quản lý'),
+(N'Thủ kho'),
+(N'Bán hàng'),
+(N'Kế toán');
+```
+
+**Bảng PHANLOAI_KH (Phân loại khách hàng):**
+```sql
+INSERT INTO PHANLOAI_KH (maPLKH, tenPLKH, nguongChiMin) VALUES 
+('LE', N'Lẻ', 0),
+('THANHVIEN', N'Thành viên', 1000000),
+('VIP', N'VIP', 5000000);
+```
+
+**Bảng PHANLOAI_SANPHAM (Phân loại sản phẩm):**
+```sql
+INSERT INTO PHANLOAI_SANPHAM (maPLSP, tenPLSP) VALUES 
+('NAM', N'Nam'),
+('NU', N'Nữ'),
+('PK', N'Phụ kiện');
+```
+
+**5.2.2. Nhập dữ liệu nhân viên và tài khoản:**
+
+**Tạo nhân viên Admin:**
+```sql
+-- Tạo vị trí Quản lý
+INSERT INTO VITRI (tenVT) VALUES (N'Quản lý');
+
+-- Tạo nhân viên admin
+INSERT INTO NHANVIEN (tenNV, gioitinh, sdt, idVT) 
+VALUES (N'Admin', N'Nam', '0123456789', 1);
+
+-- Tạo tài khoản admin (password: admin123)
+INSERT INTO USERS (username, passwordHash, role, idNV)
+VALUES ('admin', 
+        UPPER(CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', 'admin123'), 2)), 
+        'admin', 
+        1);
+```
+
+**5.2.3. Nhập dữ liệu khách hàng:**
+
+```sql
+-- Lấy id phân loại khách hàng mặc định
+DECLARE @idPLKH INT = (SELECT TOP 1 id FROM PHANLOAI_KH WHERE maPLKH = 'THANHVIEN');
+
+-- Nhập khách hàng mẫu
+INSERT INTO KHACHHANG (tenKH, sdt, diachi, idPLKH) VALUES
+(N'Nguyễn Văn A', '0901234567', N'123 Đường ABC, Quận 1, TP.HCM', @idPLKH),
+(N'Trần Thị B', '0902345678', N'456 Đường XYZ, Quận 2, TP.HCM', @idPLKH);
+```
+
+**5.2.4. Nhập dữ liệu hàng hóa:**
+
+```sql
+-- Lấy id phân loại sản phẩm
+DECLARE @idPLSP_NAM INT = (SELECT id FROM PHANLOAI_SANPHAM WHERE maPLSP = 'NAM');
+DECLARE @idPLSP_NU INT = (SELECT id FROM PHANLOAI_SANPHAM WHERE maPLSP = 'NU');
+
+-- Nhập hàng hóa mẫu
+INSERT INTO HANGHOA (tenHang, idPLSP, soluong, gianhap, giaban, tonKhoToiThieu) VALUES
+(N'Áo sơ mi nam trắng', @idPLSP_NAM, 50, 200000, 350000, 10),
+(N'Áo thun nữ hồng', @idPLSP_NU, 30, 150000, 250000, 10),
+(N'Quần jean nam', @idPLSP_NAM, 40, 400000, 600000, 10);
+```
+
+**5.2.5. Nhập dữ liệu nhà cung cấp:**
+
+```sql
+INSERT INTO NHACUNGCAP (tenNCC, sdt, email, diachi, trangthai) VALUES
+(N'Công ty Thời trang ABC', '0281234567', 'contact@abc.com', N'789 Đường DEF, TP.HCM', 1),
+(N'Công ty May mặc XYZ', '0282345678', 'info@xyz.com', N'321 Đường GHI, TP.HCM', 1);
+```
+
+**5.2.6. Nhập dữ liệu khuyến mãi:**
+
+```sql
+INSERT INTO KHUYENMAI (maKM, tenKM, phantramGiam, ngayBD, ngayKT) VALUES
+('KM001', N'Giảm giá 10%', 10, '2024-01-01', '2024-12-31'),
+('KM002', N'Giảm giá 20%', 20, '2024-06-01', '2024-06-30');
+```
+
+**5.2.7. Quy trình nhập dữ liệu qua giao diện:**
+
+Hệ thống cung cấp các form nhập liệu trực quan:
+
+- **Form nhập nhân viên**: Admin có thể thêm nhân viên mới với đầy đủ thông tin và phân quyền
+- **Form nhập khách hàng**: Nhân viên có thể thêm khách hàng mới khi bán hàng
+- **Form nhập hàng hóa**: Admin và thủ kho có thể thêm hàng hóa mới vào hệ thống
+- **Form tạo phiếu nhập**: Thủ kho có thể tạo phiếu nhập hàng với chi tiết từng sản phẩm
+
+#### 5.3. Thiết kế truy vấn dữ liệu
+
+**5.3.1. Truy vấn cơ bản (SELECT):**
+
+**Lấy danh sách hàng hóa:**
+```sql
+SELECT h.id, h.maHang, h.tenHang, pl.tenPLSP, 
+       h.soluong, h.gianhap, h.giaban, h.ngayNhapCuoi
+FROM HANGHOA h
+JOIN PHANLOAI_SANPHAM pl ON h.idPLSP = pl.id
+ORDER BY h.tenHang;
+```
+
+**Lấy danh sách hóa đơn với thông tin liên quan:**
+```sql
+SELECT h.id, h.maHD, h.ngayLap, h.tongTien,
+       nv.maNV, nv.tenNV as tenNhanVien,
+       kh.maKH, kh.tenKH as tenKhachHang,
+       km.maKM, km.tenKM as tenKhuyenMai, km.phantramGiam
+FROM HOADON h
+LEFT JOIN NHANVIEN nv ON h.idNV = nv.id
+LEFT JOIN KHACHHANG kh ON h.idKH = kh.id
+LEFT JOIN KHUYENMAI km ON h.idKM = km.id
+ORDER BY h.ngayLap DESC;
+```
+
+**5.3.2. Truy vấn với điều kiện (WHERE):**
+
+**Tìm kiếm hàng hóa theo tên:**
+```sql
+SELECT * FROM HANGHOA 
+WHERE tenHang LIKE N'%áo%'
+ORDER BY tenHang;
+```
+
+**Lấy hàng hóa sắp hết (tồn kho thấp):**
+```sql
+SELECT maHang, tenHang, soluong, tonKhoToiThieu
+FROM HANGHOA
+WHERE soluong <= tonKhoToiThieu
+ORDER BY soluong ASC;
+```
+
+**5.3.3. Truy vấn với JOIN:**
+
+**Lấy chi tiết hóa đơn:**
+```sql
+SELECT h.maHD, h.ngayLap, h.tongTien,
+       hh.maHang, hh.tenHang,
+       ct.soluong, ct.dongia, ct.thanhTien
+FROM HOADON h
+JOIN CHITIET_HD ct ON h.id = ct.idHD
+JOIN HANGHOA hh ON ct.idHang = hh.id
+WHERE h.id = @idHD;
+```
+
+**5.3.4. Truy vấn thống kê (GROUP BY, AGGREGATE):**
+
+**Thống kê doanh thu theo ngày:**
+```sql
+SELECT CAST(ngayLap AS DATE) as ngay,
+       COUNT(*) as soHoaDon,
+       SUM(tongTien) as tongDoanhThu
+FROM HOADON
+WHERE CAST(ngayLap AS DATE) BETWEEN @startDate AND @endDate
+GROUP BY CAST(ngayLap AS DATE)
+ORDER BY ngay DESC;
+```
+
+**Thống kê doanh thu theo nhân viên:**
+```sql
+SELECT nv.maNV, nv.tenNV,
+       COUNT(*) as soHoaDon,
+       SUM(h.tongTien) as tongDoanhThu
+FROM HOADON h
+JOIN NHANVIEN nv ON h.idNV = nv.id
+WHERE CAST(h.ngayLap AS DATE) BETWEEN @startDate AND @endDate
+GROUP BY nv.maNV, nv.tenNV
+ORDER BY tongDoanhThu DESC;
+```
+
+**5.3.5. Truy vấn với Subquery:**
+
+**Lấy tổng tiền từ chi tiết hóa đơn:**
+```sql
+UPDATE HOADON
+SET tongTien = (
+    SELECT ISNULL(SUM(thanhTien), 0)
+    FROM CHITIET_HD
+    WHERE idHD = HOADON.id
+)
+WHERE id = @idHD;
+```
+
+**5.3.6. Truy vấn phức tạp - Thống kê sản phẩm bán chạy:**
+```sql
+SELECT TOP 10
+    hh.maHang, hh.tenHang,
+    SUM(ct.soluong) as tongSoLuongBan,
+    SUM(ct.thanhTien) as tongDoanhThu
+FROM CHITIET_HD ct
+JOIN HANGHOA hh ON ct.idHang = hh.id
+JOIN HOADON h ON ct.idHD = h.id
+WHERE CAST(h.ngayLap AS DATE) BETWEEN @startDate AND @endDate
+GROUP BY hh.maHang, hh.tenHang
+ORDER BY tongSoLuongBan DESC;
+```
+
+**5.3.7. Tối ưu hóa truy vấn:**
+
+Hệ thống sử dụng các kỹ thuật tối ưu:
+
+- **Indexes**: Tạo index trên các cột thường xuyên được tìm kiếm
+  ```sql
+  CREATE INDEX idx_HANGHOA_tenHang ON HANGHOA(tenHang);
+  CREATE INDEX idx_HOADON_ngayLap ON HOADON(ngayLap DESC);
+  CREATE INDEX idx_LSHD_idNV ON LICHSU_HOATDONG(idNV);
+  ```
+
+- **Computed Columns**: Sử dụng computed columns để tự động tính toán
+  ```sql
+  maHD AS ('HD' + RIGHT('000' + CAST(id AS VARCHAR(5)), 5)) PERSISTED
+  thanhTien AS (soluong * dongia) PERSISTED
+  ```
+
+- **Parameterized Queries**: Sử dụng parameterized queries để tránh SQL injection
+  ```javascript
+  await pool.request()
+      .input('id', sql.Int, id)
+      .query('SELECT * FROM HANGHOA WHERE id = @id');
+  ```
+
+#### 5.4. Thiết kế biểu mẫu
+
+**5.4.1. Biểu mẫu đăng nhập (login.html):**
+
+**Chức năng:**
+- Xác thực người dùng với username và password
+- Mã hóa password bằng SHA-256
+- Chuyển hướng theo vai trò (admin, seller, warehouse)
+
+**Thiết kế:**
+- Form đơn giản với 2 trường: username và password
+- Validation phía client và server
+- Hiển thị thông báo lỗi rõ ràng
 - Responsive design
-- Tìm kiếm và lọc dữ liệu
-- Modal để thêm/sửa/xóa
-- Toast notifications
-- Export PDF/Excel
 
-#### 5.5. Thiết kế triggers và tự động hóa
+**5.4.2. Biểu mẫu quản lý nhân viên (admin.html):**
 
-**5.5.1. Trigger trừ kho khi bán hàng:**
+**Chức năng:**
+- Thêm nhân viên mới
+- Sửa thông tin nhân viên
+- Xóa nhân viên
+- Tạo tài khoản đăng nhập cho nhân viên
+- Phân quyền theo vai trò
 
-```sql
-CREATE OR ALTER TRIGGER trg_CapNhatKhoSauBanHang
-ON CHITIET_HD
-AFTER INSERT
-AS
-BEGIN
-    -- Trừ kho
-    UPDATE HANGHOA SET soluong = HANGHOA.soluong - i.soluong
-    FROM HANGHOA JOIN inserted i ON HANGHOA.id = i.idHang;
-    
-    -- Tích điểm cho khách hàng
-    UPDATE KHACHHANG SET tongchi = tongchi + i.thanhTien,
-                         diemtichluy = diemtichluy + (CAST(i.thanhTien AS INT) / 100000)
-    FROM KHACHHANG 
-    JOIN HOADON h ON KHACHHANG.id = h.idKH
-    JOIN inserted i ON h.id = i.idHD;
-END;
+**Các trường dữ liệu:**
+- Tên nhân viên (bắt buộc)
+- Giới tính (Nam/Nữ)
+- Số điện thoại
+- Vị trí (dropdown từ bảng VITRI)
+- Trạng thái (Hoạt động/Khóa)
+
+**5.4.3. Biểu mẫu quản lý khách hàng:**
+
+**Chức năng:**
+- Thêm khách hàng mới
+- Cập nhật thông tin khách hàng
+- Xem điểm tích lũy và tổng chi tiêu
+- Phân loại khách hàng
+
+**Các trường dữ liệu:**
+- Tên khách hàng (bắt buộc)
+- Số điện thoại (unique)
+- Địa chỉ
+- Phân loại khách hàng (dropdown)
+- Điểm tích lũy (tự động tính)
+- Tổng chi tiêu (tự động tính)
+
+**5.4.4. Biểu mẫu quản lý hàng hóa:**
+
+**Chức năng:**
+- Thêm hàng hóa mới
+- Cập nhật thông tin hàng hóa
+- Xóa hàng hóa
+- Theo dõi tồn kho
+- Cảnh báo hàng sắp hết
+
+**Các trường dữ liệu:**
+- Tên hàng hóa (bắt buộc)
+- Phân loại sản phẩm (dropdown)
+- Số lượng tồn kho
+- Giá nhập
+- Giá bán
+- Tồn kho tối thiểu
+- Ngày nhập cuối (tự động cập nhật)
+
+**5.4.5. Biểu mẫu tạo hóa đơn (staff.html):**
+
+**Chức năng:**
+- Chọn sản phẩm từ kho
+- Thêm vào giỏ hàng
+- Chọn/Thêm khách hàng
+- Áp dụng mã giảm giá
+- Sử dụng điểm tích lũy
+- Chọn nhân viên bán hàng
+- Tính tổng tiền tự động
+- In hóa đơn/ Xuất PDF
+
+**Luồng xử lý:**
+1. Nhân viên chọn sản phẩm từ danh sách kho
+2. Thêm sản phẩm vào giỏ hàng với số lượng
+3. Chọn khách hàng hoặc thêm khách hàng mới
+4. (Tùy chọn) Áp dụng mã giảm giá
+5. (Tùy chọn) Sử dụng điểm tích lũy (1 điểm = 1.000đ)
+6. Hệ thống tự động tính tổng tiền
+7. Xác nhận và tạo hóa đơn
+8. Trigger tự động trừ kho và tích điểm
+
+**5.4.6. Biểu mẫu tạo phiếu nhập hàng:**
+
+**Chức năng:**
+- Chọn hàng hóa có sẵn hoặc thêm hàng hóa mới
+- Nhập số lượng và giá nhập
+- Chọn nhà cung cấp
+- Chọn người nhập (quản lý/thủ kho)
+- Tính tổng tiền tự động
+- Tự động cộng hàng vào kho khi tạo phiếu nhập
+
+**Các trường dữ liệu:**
+- Ngày nhập (mặc định: ngày hiện tại)
+- Người nhập (dropdown từ NHANVIEN)
+- Nhà cung cấp (dropdown từ NHACUNGCAP, có thể NULL)
+- Chi tiết sản phẩm:
+  - Hàng hóa (dropdown hoặc thêm mới)
+  - Số lượng (bắt buộc > 0)
+  - Đơn giá nhập (bắt buộc)
+  - Thành tiền (tự động tính)
+
+**5.4.7. Biểu mẫu thống kê doanh thu:**
+
+**Chức năng:**
+- Lọc theo khoảng thời gian (ngày, tuần, tháng, quý, năm)
+- Lọc theo nhân viên (tùy chọn)
+- Hiển thị biểu đồ doanh thu
+- Xuất báo cáo Excel/PDF
+
+**Các tùy chọn lọc:**
+- Khoảng thời gian: Từ ngày - Đến ngày
+- Nhân viên: Tất cả hoặc chọn nhân viên cụ thể
+- Sắp xếp: Theo doanh thu (cao → thấp) hoặc theo ngày
+
+**5.4.8. Tính năng chung của các biểu mẫu:**
+
+- **Validation**: Kiểm tra dữ liệu đầu vào trước khi submit
+- **Auto-complete**: Gợi ý khi nhập liệu
+- **Modal**: Sử dụng modal để thêm/sửa dữ liệu
+- **Toast Notification**: Thông báo kết quả thao tác
+- **Responsive**: Tương thích với nhiều kích thước màn hình
+- **Loading State**: Hiển thị trạng thái đang xử lý
+
+#### 5.5. Thiết kế báo cáo
+
+**5.5.1. Báo cáo hóa đơn:**
+
+**Báo cáo chi tiết hóa đơn (PDF):**
+- Header: Logo, tên cửa hàng, địa chỉ
+- Thông tin hóa đơn: Mã HD, ngày lập, nhân viên bán hàng
+- Thông tin khách hàng: Tên, số điện thoại, địa chỉ
+- Chi tiết sản phẩm: Bảng liệt kê sản phẩm, số lượng, đơn giá, thành tiền
+- Tổng tiền: Tổng cộng, giảm giá (nếu có), điểm đã dùng, thành tiền cuối cùng
+- Footer: Cảm ơn, chữ ký
+
+**Xuất PDF sử dụng PDFKit:**
+```javascript
+const PDFDocument = require('pdfkit');
+const doc = new PDFDocument();
+// Đăng ký font tiếng Việt
+registerVietnameseFonts(doc);
+// Vẽ nội dung hóa đơn
+// Stream PDF về client
 ```
 
-**5.5.2. Trigger cộng kho khi nhập hàng:**
+**5.5.2. Báo cáo doanh thu:**
 
-```sql
-CREATE OR ALTER TRIGGER trg_CapNhatKhoSauNhapHang
-ON CHITIET_PHIEUNHAP
-AFTER INSERT
-AS
-BEGIN
-    -- Cộng hàng vào kho
-    UPDATE HANGHOA 
-    SET soluong = HANGHOA.soluong + i.soluong,
-        gianhap = i.dongia,
-        ngayNhapCuoi = CAST(GETDATE() AS DATE)
-    FROM HANGHOA 
-    JOIN inserted i ON HANGHOA.id = i.idHang;
-    
-    -- Cập nhật tổng tiền phiếu nhập
-    UPDATE PHIEUNHAP
-    SET tongTien = (SELECT ISNULL(SUM(thanhTien), 0)
-                    FROM CHITIET_PHIEUNHAP
-                    WHERE idPN = PHIEUNHAP.id)
-    WHERE id IN (SELECT DISTINCT idPN FROM inserted);
-END;
-```
+**Báo cáo doanh thu theo thời gian:**
+- Thống kê theo ngày: Doanh thu từng ngày trong khoảng thời gian
+- Thống kê theo tuần: Doanh thu từng tuần
+- Thống kê theo tháng: Doanh thu từng tháng
+- Thống kê theo quý: Doanh thu từng quý
+- Thống kê theo năm: Doanh thu từng năm
 
-**5.5.3. Computed Columns:**
+**Báo cáo doanh thu theo nhân viên:**
+- Danh sách nhân viên với số hóa đơn và tổng doanh thu
+- Sắp xếp theo doanh thu từ cao đến thấp
+- Hiển thị phần trăm đóng góp của mỗi nhân viên
 
-- `maHD`, `maPN`, `maKH`, `maNV`, `maHang`, `maNCC`: Tự động sinh mã
-- `thanhTien`: Tự động tính thành tiền
-- `trangthai`: Tự động xác định trạng thái khuyến mãi
+**Biểu đồ doanh thu:**
+- Sử dụng Chart.js để vẽ biểu đồ cột/đường
+- Hiển thị trực quan xu hướng doanh thu
+- Tương tác: Hover để xem chi tiết
+
+**5.5.3. Báo cáo tồn kho:**
+
+**Báo cáo hàng tồn kho:**
+- Danh sách tất cả hàng hóa với số lượng tồn kho
+- Cảnh báo hàng sắp hết (số lượng <= tồn kho tối thiểu)
+- Thống kê tổng giá trị tồn kho
+
+**Báo cáo nhập xuất kho:**
+- Lịch sử nhập hàng (phiếu nhập)
+- Lịch sử xuất hàng (hóa đơn)
+- Tổng hợp số lượng nhập/xuất theo sản phẩm
+
+**5.5.4. Báo cáo khách hàng:**
+
+**Báo cáo khách hàng VIP:**
+- Danh sách khách hàng có tổng chi tiêu cao nhất
+- Điểm tích lũy của từng khách hàng
+- Phân loại khách hàng theo mức độ thân thiết
+
+**Báo cáo hành vi mua hàng:**
+- Sản phẩm được mua nhiều nhất
+- Thời gian mua hàng (giờ cao điểm)
+- Giá trị đơn hàng trung bình
+
+**5.5.5. Báo cáo lịch sử hoạt động:**
+
+**Báo cáo hoạt động nhân viên:**
+- Lịch sử các thao tác của nhân viên
+- Thống kê số lượng hóa đơn/phiếu nhập theo nhân viên
+- Thời gian hoạt động
+
+**5.5.6. Xuất báo cáo:**
+
+**Xuất Excel:**
+- Sử dụng ExcelJS để tạo file Excel
+- Định dạng: Header đậm, căn chỉnh, màu sắc
+- Có thể xuất nhiều sheet trong một file
+
+**Xuất PDF:**
+- Sử dụng PDFKit để tạo file PDF
+- Hỗ trợ font tiếng Việt
+- Định dạng chuyên nghiệp
+
+**Xuất JSON:**
+- Xuất dữ liệu dạng JSON để tích hợp với hệ thống khác
+- API endpoint: `/api/hoadon/:id/export?format=json`
+
+**5.5.7. Dashboard tổng quan:**
+
+**Dashboard Admin:**
+- Tổng số nhân viên, khách hàng, hàng hóa
+- Doanh thu hôm nay, tuần này, tháng này
+- Biểu đồ doanh thu 7 ngày gần nhất
+- Cảnh báo hàng sắp hết
+- Top 5 sản phẩm bán chạy
+
+**Dashboard Staff:**
+- Doanh thu hôm nay
+- Số hóa đơn đã tạo
+- Hàng hóa sắp hết
+- Thống kê nhanh
 
 #### 5.6. Kiểm thử và triển khai hệ thống
 
 **5.6.1. Kiểm thử chức năng:**
 
-- ✅ Kiểm thử đăng nhập và phân quyền
-- ✅ Kiểm thử CRUD các bảng
-- ✅ Kiểm thử tạo hóa đơn và tự động trừ kho
-- ✅ Kiểm thử tạo phiếu nhập và tự động cộng kho
-- ✅ Kiểm thử tích điểm khách hàng
-- ✅ Kiểm thử xuất PDF/Excel
-- ✅ Kiểm thử thống kê và báo cáo
+**Kiểm thử đăng nhập và phân quyền:**
+- ✅ Kiểm thử đăng nhập với username/password đúng
+- ✅ Kiểm thử đăng nhập với thông tin sai
+- ✅ Kiểm thử chuyển hướng theo vai trò (admin → admin.html, seller → staff.html)
+- ✅ Kiểm thử truy cập trang không đúng quyền
+
+**Kiểm thử CRUD các bảng:**
+- ✅ **Nhân viên**: Thêm, sửa, xóa nhân viên
+- ✅ **Khách hàng**: Thêm, sửa khách hàng
+- ✅ **Hàng hóa**: Thêm, sửa, xóa hàng hóa
+- ✅ **Vị trí**: Thêm, sửa, xóa vị trí
+- ✅ **Phân loại**: Thêm, sửa, xóa phân loại
+
+**Kiểm thử tạo hóa đơn:**
+- ✅ Tạo hóa đơn với nhiều sản phẩm
+- ✅ Kiểm tra tự động trừ kho sau khi tạo hóa đơn
+- ✅ Kiểm tra tích điểm khách hàng (100.000đ = 1 điểm)
+- ✅ Kiểm tra áp dụng mã giảm giá
+- ✅ Kiểm tra sử dụng điểm tích lũy
+- ✅ Kiểm tra tính tổng tiền chính xác
+
+**Kiểm thử tạo phiếu nhập:**
+- ✅ Tạo phiếu nhập với nhiều sản phẩm
+- ✅ Kiểm tra tự động cộng kho sau khi tạo phiếu nhập
+- ✅ Kiểm tra cập nhật giá nhập mới nhất
+- ✅ Kiểm tra cập nhật ngày nhập cuối
+- ✅ Kiểm tra tính tổng tiền phiếu nhập
+
+**Kiểm thử xuất báo cáo:**
+- ✅ Xuất PDF hóa đơn
+- ✅ Xuất Excel danh sách hóa đơn
+- ✅ Xuất JSON dữ liệu
+- ✅ Kiểm tra font tiếng Việt trong PDF
+
+**Kiểm thử thống kê:**
+- ✅ Thống kê doanh thu theo ngày
+- ✅ Thống kê doanh thu theo nhân viên
+- ✅ Lọc theo khoảng thời gian
+- ✅ Hiển thị biểu đồ chính xác
 
 **5.6.2. Kiểm thử hiệu năng:**
 
-- Kiểm tra tốc độ truy vấn database
-- Kiểm tra khả năng xử lý nhiều request đồng thời
-- Tối ưu hóa các câu truy vấn phức tạp
+**Kiểm thử tốc độ truy vấn:**
+- Kiểm tra thời gian phản hồi của các API endpoint
+- Tối ưu các truy vấn phức tạp bằng cách thêm index
+- Sử dụng EXPLAIN PLAN để phân tích truy vấn
 
-**5.6.3. Triển khai:**
+**Kiểm thử khả năng xử lý đồng thời:**
+- Test với nhiều người dùng cùng lúc
+- Kiểm tra connection pool (max: 10 connections)
+- Kiểm tra timeout và error handling
 
-- Cấu hình database trên server
-- Deploy backend lên server (Node.js)
-- Deploy frontend lên web server
-- Cấu hình domain và SSL
-- Backup database định kỳ
+**5.6.3. Kiểm thử bảo mật:**
+
+**Kiểm thử xác thực:**
+- Mã hóa password bằng SHA-256
+- Kiểm tra SQL injection
+- Kiểm tra XSS (Cross-Site Scripting)
+
+**Kiểm thử phân quyền:**
+- Kiểm tra người dùng không thể truy cập chức năng không có quyền
+- Kiểm tra session management
+
+**5.6.4. Triển khai hệ thống:**
+
+**Chuẩn bị môi trường production:**
+
+1. **Cấu hình Database:**
+   - Cài đặt SQL Server trên server
+   - Tạo database `HeThongQuanLyCuaHang_FMSTYLE`
+   - Chạy các script SQL để tạo bảng và triggers
+   - Cấu hình backup tự động
+
+2. **Cấu hình Backend:**
+   - Cài đặt Node.js trên server
+   - Copy source code lên server
+   - Cài đặt dependencies: `npm install --production`
+   - Cấu hình file `.env`:
+     ```
+     DB_USER=your_username
+     DB_PASSWORD=your_password
+     DB_SERVER=your_server
+     DB_DATABASE=HeThongQuanLyCuaHang_FMSTYLE
+     DB_PORT=1433
+     PORT=3000
+     ```
+   - Sử dụng PM2 để quản lý process:
+     ```bash
+     npm install -g pm2
+     pm2 start server.js --name "fmstyle-api"
+     pm2 save
+     pm2 startup
+     ```
+
+3. **Cấu hình Frontend:**
+   - Copy thư mục `src/` lên web server (Nginx/Apache)
+   - Cấu hình reverse proxy để forward request đến Node.js backend
+   - Cấu hình CORS cho production domain
+
+4. **Cấu hình Nginx (ví dụ):**
+   ```nginx
+   server {
+       listen 80;
+       server_name your-domain.com;
+       
+       # Frontend static files
+       location / {
+           root /var/www/fmstyle/src;
+           index login.html;
+           try_files $uri $uri/ =404;
+       }
+       
+       # Backend API
+       location /api {
+           proxy_pass http://localhost:3000;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+       }
+   }
+   ```
+
+5. **Cấu hình SSL:**
+   - Cài đặt SSL certificate (Let's Encrypt)
+   - Cấu hình HTTPS cho domain
+
+6. **Backup và khôi phục:**
+   - Thiết lập backup database định kỳ (hàng ngày)
+   - Lưu trữ backup ở nhiều nơi
+   - Test khôi phục dữ liệu định kỳ
+
+**5.6.5. Hướng dẫn sử dụng sau khi triển khai:**
+
+1. **Tạo tài khoản admin đầu tiên:**
+   - Chạy script SQL để tạo admin (xem phần 5.2.2)
+   - Đăng nhập với username: `admin`, password: `admin123`
+   - Đổi mật khẩu ngay sau khi đăng nhập
+
+2. **Nhập dữ liệu ban đầu:**
+   - Nhập vị trí nhân viên
+   - Nhập phân loại khách hàng
+   - Nhập phân loại sản phẩm
+   - Nhập hàng hóa ban đầu
+
+3. **Tạo tài khoản cho nhân viên:**
+   - Thêm nhân viên vào hệ thống
+   - Tạo tài khoản đăng nhập cho nhân viên
+   - Phân quyền phù hợp
+
+**5.6.6. Bảo trì và cập nhật:**
+
+- **Monitoring**: Sử dụng PM2 monitoring hoặc các công cụ khác
+- **Logging**: Ghi log các lỗi và hoạt động quan trọng
+- **Cập nhật**: Thường xuyên cập nhật dependencies để fix lỗi bảo mật
+- **Backup**: Kiểm tra backup định kỳ
+- **Performance**: Theo dõi hiệu năng và tối ưu khi cần thiết
 
 ---
 
