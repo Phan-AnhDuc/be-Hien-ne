@@ -1794,6 +1794,19 @@ async function renderDashboard() {
         await loadDashboardInitialData();
     }
     
+    // Nút thông báo - luôn hiển thị trong page-header của dashboard
+    const notificationButtonHTML = `
+            <div>
+                <button onclick="openNotificationSection()" style="position: relative; background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; border: none; padding: 12px 24px; border-radius: 10px; cursor: pointer; font-size: 15px; font-weight: 600; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3); transition: all 0.3s; display: flex; align-items: center; gap: 8px;"
+                        onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(255, 107, 107, 0.4)'"
+                        onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(255, 107, 107, 0.3)'">
+                    <span style="font-size: 20px;">🔔</span>
+                    <span>Thông Báo</span>
+                    <span id="notification-badge-dashboard" style="position: absolute; top: -8px; right: -8px; background: #fff; color: #ff6b6b; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">0</span>
+                </button>
+            </div>
+    `;
+    
     // Copy EXACTLY from staff.html
     content.innerHTML = `
         <div class="page-header">
@@ -1801,15 +1814,7 @@ async function renderDashboard() {
                 <h2>Tổng Quan Hệ Thống</h2>
                 <p>Thống kê nhanh hoạt động kinh doanh</p>
             </div>
-            <div>
-                <button onclick="openNotificationSection()" style="position: relative; background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; border: none; padding: 12px 24px; border-radius: 10px; cursor: pointer; font-size: 15px; font-weight: 600; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3); transition: all 0.3s; display: flex; align-items: center; gap: 8px;"
-                        onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(255, 107, 107, 0.4)'"
-                        onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(255, 107, 107, 0.3)'">
-                    <span style="font-size: 20px;">🔔</span>
-                    <span>Thông Báo</span>
-                    <span id="notification-badge" style="position: absolute; top: -8px; right: -8px; background: #fff; color: #ff6b6b; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">0</span>
-                </button>
-            </div>
+            ${notificationButtonHTML}
         </div>
         <div class="stats-row">
             <div class="stat-card blue">
@@ -2996,7 +3001,11 @@ async function loadSupplierStatistics() {
 }
 
 function renderStockWarnings() {
-    const lowStockItems = dashboardData.products.filter(p => p.soluong < 20 && p.soluong > 0);
+    // Sử dụng tonKhoToiThieu thay vì hardcode < 20
+    const lowStockItems = dashboardData.products.filter(p => {
+        const tonKhoToiThieu = p.tonKhoToiThieu || 10;
+        return p.soluong <= tonKhoToiThieu && p.soluong > 0;
+    });
     const container = document.getElementById('stock-warnings');
     
     if (!container) return;
@@ -3008,13 +3017,16 @@ function renderStockWarnings() {
 
     container.innerHTML = `
         <div class="stock-warning-list">
-            <h4>⚠️ Cảnh Báo Hàng Tồn Kho Thấp (dưới 20)</h4>
-            ${lowStockItems.map(p => `
+            <h4>⚠️ Cảnh Báo Hàng Tồn Kho Thấp</h4>
+            ${lowStockItems.map(p => {
+                const tonKhoToiThieu = p.tonKhoToiThieu || 10;
+                return `
                 <div class="stock-warning-item">
                     <span><strong>${p.tenHang}</strong> (${p.maHang})</span>
-                    <span class="badge badge-warning">Còn ${p.soluong} ${p.donvi || 'sp'}</span>
+                    <span class="badge badge-warning">Còn ${p.soluong}/${tonKhoToiThieu} ${p.donvi || 'sp'}</span>
                 </div>
-            `).join('')}
+            `;
+            }).join('')}
         </div>
     `;
 }
@@ -3038,39 +3050,51 @@ function closeNotificationSection() {
 
 async function loadNotificationData() {
     try {
-        // Load low stock items
-        const lowStockItems = dashboardData.products.filter(p => p.soluong < 20 && p.soluong > 0);
+        // Load low stock items - Sử dụng tonKhoToiThieu thay vì hardcode < 20
+        const lowStockItems = dashboardData.products.filter(p => {
+            const tonKhoToiThieu = p.tonKhoToiThieu || 10; // Mặc định 10 nếu không có
+            return p.soluong <= tonKhoToiThieu && p.soluong > 0;
+        });
         const lowStockList = document.getElementById('low-stock-list');
         
         if (lowStockList) {
             if (lowStockItems.length === 0) {
                 lowStockList.innerHTML = '<div style="text-align: center; padding: 20px; color: #4caf50; font-weight: 500;">✅ Không có sản phẩm nào tồn kho thấp</div>';
             } else {
-                lowStockList.innerHTML = lowStockItems.map(p => `
+                lowStockList.innerHTML = lowStockItems.map(p => {
+                    const tonKhoToiThieu = p.tonKhoToiThieu || 10;
+                    return `
                     <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #ffcc80; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;"
                          onmouseover="this.style.boxShadow='0 2px 8px rgba(255,152,0,0.2)'; this.style.transform='translateX(5px)'"
                          onmouseout="this.style.boxShadow='none'; this.style.transform='translateX(0)'">
                         <div style="flex: 1;">
                             <div style="font-weight: 700; color: #1a2b48; font-size: 15px; margin-bottom: 5px;">${p.tenHang}</div>
-                            <div style="font-size: 13px; color: #666;">Mã: ${p.maHang} • Đơn vị: ${p.donvi || 'sp'}</div>
+                            <div style="font-size: 13px; color: #666;">Mã: ${p.maHang} • Tồn kho tối thiểu: ${tonKhoToiThieu} ${p.donvi || 'sp'}</div>
                         </div>
                         <div style="background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 14px; white-space: nowrap; margin-left: 15px;">
                             Còn ${p.soluong} ${p.donvi || 'sp'}
                         </div>
                     </div>
-                `).join('');
+                `;
+                }).join('');
             }
         }
 
-        // Load slow moving products
+        // Load slow moving products - Logic đúng: sau 30 ngày nhập hàng không có hóa đơn VÀ số lượng bán trong 90 ngày < 5
         let slowMovingItems = [];
+        let productSales = {}; // Khai báo ở ngoài để có thể dùng trong phần hiển thị
         try {
             const ordersRes = await apiGet('hoadon');
+            const now = new Date();
+            const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
             
             if (ordersRes.success && ordersRes.data) {
-                const productSales = {};
-                for (const order of ordersRes.data.slice(0, 100)) {
-                    if (!order.id) continue;
+                // Tính số lượng bán trong 90 ngày gần nhất
+                for (const order of ordersRes.data) {
+                    if (!order.id || !order.ngayLap) continue;
+                    const orderDate = new Date(order.ngayLap);
+                    if (orderDate < ninetyDaysAgo) continue; // Chỉ tính hóa đơn trong 90 ngày gần nhất
+                    
                     try {
                         const detailRes = await apiGet(`chitiethd/${order.id}`);
                         if (detailRes.success && detailRes.data) {
@@ -3087,10 +3111,27 @@ async function loadNotificationData() {
                     }
                 }
                 
+                // Lọc sản phẩm bán chậm theo 3 điều kiện:
+                // 1. Sau 30 ngày nhập hàng không có hóa đơn nào
+                // 2. Số lượng bán trong 90 ngày < 5
+                // 3. Tồn kho > 50
                 slowMovingItems = dashboardData.products
                     .filter(p => {
-                        const sales = productSales[p.id] || 0;
-                        return p.soluong > 50 && sales < 10;
+                        if (!p.ngayNhapCuoi) return false;
+                        
+                        // Điều kiện 1: Sau 30 ngày nhập hàng
+                        const ngayNhapCuoi = new Date(p.ngayNhapCuoi);
+                        const thirtyDaysAfterImport = new Date(ngayNhapCuoi.getTime() + 30 * 24 * 60 * 60 * 1000);
+                        const condition1 = now >= thirtyDaysAfterImport;
+                        
+                        // Điều kiện 2: Số lượng bán trong 90 ngày < 5
+                        const salesIn90Days = productSales[p.id] || 0;
+                        const condition2 = salesIn90Days < 5;
+                        
+                        // Điều kiện 3: Tồn kho > 50
+                        const condition3 = p.soluong > 50;
+                        
+                        return condition1 && condition2 && condition3;
                     })
                     .sort((a, b) => b.soluong - a.soluong)
                     .slice(0, 10);
@@ -3104,19 +3145,23 @@ async function loadNotificationData() {
             if (slowMovingItems.length === 0) {
                 slowMovingList.innerHTML = '<div style="text-align: center; padding: 20px; color: #4caf50; font-weight: 500;">✅ Không có sản phẩm nào bán chậm</div>';
             } else {
-                slowMovingList.innerHTML = slowMovingItems.map(p => `
+                slowMovingList.innerHTML = slowMovingItems.map(p => {
+                    const ngayNhapCuoi = p.ngayNhapCuoi ? new Date(p.ngayNhapCuoi).toLocaleDateString('vi-VN') : 'N/A';
+                    const salesIn90Days = productSales[p.id] || 0;
+                    return `
                     <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #f48fb1; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;"
                          onmouseover="this.style.boxShadow='0 2px 8px rgba(233,30,99,0.2)'; this.style.transform='translateX(5px)'"
                          onmouseout="this.style.boxShadow='none'; this.style.transform='translateX(0)'">
                         <div style="flex: 1;">
                             <div style="font-weight: 700; color: #1a2b48; font-size: 15px; margin-bottom: 5px;">${p.tenHang}</div>
-                            <div style="font-size: 13px; color: #666;">Mã: ${p.maHang} • Tồn kho cao nhưng bán chậm</div>
+                            <div style="font-size: 13px; color: #666;">Mã: ${p.maHang} • Nhập cuối: ${ngayNhapCuoi} • Bán 90 ngày: ${salesIn90Days} sp</div>
                         </div>
                         <div style="background: linear-gradient(135deg, #e91e63 0%, #c2185b 100%); color: white; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 14px; white-space: nowrap; margin-left: 15px;">
                             Tồn: ${p.soluong} ${p.donvi || 'sp'}
                         </div>
                     </div>
-                `).join('');
+                `;
+                }).join('');
             }
         }
 
@@ -3144,21 +3189,32 @@ async function loadNotificationData() {
 }
 
 function updateNotificationBadge() {
-    const badge = document.getElementById('notification-badge');
-    if (badge) {
-        const lowStockItems = dashboardData.products.filter(p => p.soluong < 20 && p.soluong > 0);
+    // Update both badges if they exist (warehouse fixed button and dashboard button)
+    const badges = [
+        document.getElementById('notification-badge'), // Fixed button in warehouse.html
+        document.getElementById('notification-badge-dashboard') // Button in dashboard (for admin/staff pages)
+    ].filter(b => b !== null);
+    
+    if (badges.length > 0) {
+        // Sử dụng tonKhoToiThieu thay vì hardcode < 20
+        const lowStockItems = dashboardData.products.filter(p => {
+            const tonKhoToiThieu = p.tonKhoToiThieu || 10;
+            return p.soluong <= tonKhoToiThieu && p.soluong > 0;
+        });
         // Tính số lượng hàng bán chậm (cần load async, tạm thời chỉ tính low stock)
         let totalNotifications = lowStockItems.length;
         
         // Có thể thêm logic tính slow moving items nếu cần
         // Tạm thời chỉ hiển thị số low stock items
         
-        if (totalNotifications > 0) {
-            badge.textContent = totalNotifications > 99 ? '99+' : totalNotifications;
-            badge.style.display = 'flex';
-        } else {
-            badge.style.display = 'none';
-        }
+        badges.forEach(badge => {
+            if (totalNotifications > 0) {
+                badge.textContent = totalNotifications > 99 ? '99+' : totalNotifications;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        });
     }
 }
 

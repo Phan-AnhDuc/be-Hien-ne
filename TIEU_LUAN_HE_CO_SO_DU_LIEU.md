@@ -791,8 +791,19 @@ registerVietnameseFonts(doc);
 
 **Báo cáo hàng tồn kho:**
 - Danh sách tất cả hàng hóa với số lượng tồn kho
-- Cảnh báo hàng sắp hết (số lượng <= tồn kho tối thiểu)
-- Thống kê tổng giá trị tồn kho
+- **Cảnh báo hàng sắp hết**: Sử dụng logic so sánh `số lượng tồn kho <= tồn kho tối thiểu` (trường `tonKhoToiThieu` trong bảng HANGHOA)
+  - Mỗi sản phẩm có một ngưỡng tồn kho tối thiểu riêng (mặc định là 10)
+  - Khi số lượng tồn kho giảm xuống bằng hoặc thấp hơn ngưỡng này, hệ thống sẽ cảnh báo
+  - Ví dụ: Sản phẩm A có `tonKhoToiThieu = 15`, khi `soluong = 14` hoặc thấp hơn sẽ được cảnh báo
+- Thống kê tổng giá trị tồn kho (tổng của `soluong * gianhap`)
+
+**Báo cáo hàng bán chậm:**
+- Xác định sản phẩm bán chậm dựa trên 3 tiêu chí:
+  1. **Thời gian tồn kho**: Sau 30 ngày kể từ ngày nhập hàng cuối cùng không có hóa đơn nào bán sản phẩm này
+  2. **Lượng bán thấp**: Số lượng bán trong 90 ngày gần nhất < 5 sản phẩm
+  3. **Tồn kho cao**: Số lượng tồn kho > 50 sản phẩm (tồn kho nhiều nhưng bán chậm)
+- Hiển thị top 10 sản phẩm bán chậm nhất, sắp xếp theo số lượng tồn kho giảm dần
+- Mục đích: Hỗ trợ quyết định giảm giá, khuyến mãi hoặc ngừng nhập hàng
 
 **Báo cáo nhập xuất kho:**
 - Lịch sử nhập hàng (phiếu nhập)
@@ -848,6 +859,58 @@ registerVietnameseFonts(doc);
 - Số hóa đơn đã tạo
 - Hàng hóa sắp hết
 - Thống kê nhanh
+
+**Dashboard Warehouse (Thủ kho):**
+- Tổng quan hàng hóa trong kho
+- Quản lý phiếu nhập hàng
+- Lịch sử hoạt động kho
+- **Hệ thống cảnh báo thông minh:**
+
+  **1. Cảnh báo hàng tồn kho thấp:**
+  - Điều kiện: `số lượng tồn kho <= tồn kho tối thiểu` (sử dụng trường `tonKhoToiThieu` của từng sản phẩm)
+  - Hiển thị danh sách sản phẩm cần nhập thêm
+  - Màu cảnh báo: Cam (#ff9800)
+  - Ví dụ: Nếu sản phẩm có `tonKhoToiThieu = 10` và `soluong = 8`, sản phẩm sẽ được cảnh báo
+
+  **2. Cảnh báo hàng tồn bán chậm:**
+  - Điều kiện xác định sản phẩm bán chậm:
+    - **Điều kiện 1**: Sau 30 ngày kể từ ngày nhập hàng cuối (`ngayNhapCuoi`) không có bất kỳ hóa đơn nào bán sản phẩm này
+    - **Điều kiện 2**: Số lượng bán trong 90 ngày gần nhất < 5 sản phẩm
+    - **Điều kiện 3**: Tồn kho còn nhiều (số lượng > 50 sản phẩm)
+  - Sản phẩm phải thỏa mãn cả 3 điều kiện trên mới được coi là bán chậm
+  - Hiển thị top 10 sản phẩm bán chậm nhất, sắp xếp theo số lượng tồn kho (cao → thấp)
+  - Màu cảnh báo: Hồng (#e91e63)
+  - Mục đích: Giúp thủ kho và quản lý nhận biết sản phẩm cần có biện pháp xử lý (giảm giá, khuyến mãi, hoặc ngừng nhập)
+
+  **Truy vấn SQL để lấy hàng tồn kho thấp:**
+  ```sql
+  SELECT maHang, tenHang, soluong, tonKhoToiThieu
+  FROM HANGHOA
+  WHERE soluong <= tonKhoToiThieu AND soluong > 0
+  ORDER BY soluong ASC;
+  ```
+
+  **Truy vấn SQL để lấy hàng bán chậm:**
+  ```sql
+  -- Lấy sản phẩm có ngày nhập > 30 ngày
+  SELECT h.id, h.maHang, h.tenHang, h.soluong, h.ngayNhapCuoi,
+         ISNULL(SUM(ct.soluong), 0) as soLuongBan90Ngay
+  FROM HANGHOA h
+  LEFT JOIN CHITIET_HD ct ON h.id = ct.idHang
+  LEFT JOIN HOADON hd ON ct.idHD = hd.id
+  WHERE h.ngayNhapCuoi <= DATEADD(DAY, -30, GETDATE())
+    AND h.soluong > 50
+    AND (hd.ngayLap >= DATEADD(DAY, -90, GETDATE()) OR hd.ngayLap IS NULL)
+  GROUP BY h.id, h.maHang, h.tenHang, h.soluong, h.ngayNhapCuoi
+  HAVING ISNULL(SUM(ct.soluong), 0) < 5
+  ORDER BY h.soluong DESC;
+  ```
+
+  **Giao diện thông báo:**
+  - Modal thông báo với 2 section riêng biệt cho từng loại cảnh báo
+  - Badge hiển thị số lượng cảnh báo trên nút "Thông Báo"
+  - Tự động cập nhật khi có thay đổi dữ liệu
+  - Hiển thị thông tin chi tiết: Mã sản phẩm, tên sản phẩm, số lượng tồn kho
 
 #### 5.6. Kiểm thử và triển khai hệ thống
 

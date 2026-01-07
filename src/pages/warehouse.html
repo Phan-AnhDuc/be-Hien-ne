@@ -44,8 +44,8 @@
     </div>
 
     <!-- Notification Section -->
-    <div id="notification-section" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; overflow-y: auto; padding: 20px; backdrop-filter: blur(5px);">
-        <div style="max-width: 900px; margin: 20px auto; background: white; border-radius: 16px; padding: 0; box-shadow: 0 20px 60px rgba(0,0,0,0.3); animation: modalSlideIn 0.3s ease;">
+    <div id="notification-section" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999; overflow-y: auto; padding: 20px; backdrop-filter: blur(5px); box-sizing: border-box;">
+        <div style="max-width: 900px; width: 100%; margin: 40px auto; background: white; border-radius: 16px; padding: 0; box-shadow: 0 20px 60px rgba(0,0,0,0.3); animation: modalSlideIn 0.3s ease; position: relative;">
             <div style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); padding: 25px; border-radius: 16px 16px 0 0; color: white;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h2 style="margin: 0; font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 10px;">
@@ -58,7 +58,7 @@
                 </div>
             </div>
             
-            <div style="padding: 25px;">
+            <div style="padding: 25px; max-height: calc(100vh - 200px); overflow-y: auto;">
                 <!-- Low Stock Warnings -->
                 <div id="notification-low-stock" style="margin-bottom: 25px;">
                     <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); padding: 20px; border-radius: 12px; border-left: 5px solid #ff9800; margin-bottom: 15px;">
@@ -131,6 +131,7 @@
                 showAlert('Bạn không có quyền truy cập trang này', 'error');
                 return;
             }
+            
             if (originalShowPage) {
                 originalShowPage(pageName, element);
             } else {
@@ -154,7 +155,34 @@
             // Load dashboard
             await loadDashboardInitialData();
             await loadPage();
+            // Update notification badge after loading data
+            if (typeof updateNotificationBadge === 'function') {
+                updateNotificationBadge();
+            }
         });
+        
+        // Ensure openNotificationSection and closeNotificationSection are available
+        if (typeof openNotificationSection === 'undefined') {
+            window.openNotificationSection = function() {
+                const section = document.getElementById('notification-section');
+                if (section) {
+                    section.style.display = 'block';
+                    section.scrollTop = 0;
+                    if (typeof loadNotificationData === 'function') {
+                        loadNotificationData();
+                    }
+                }
+            };
+        }
+        
+        if (typeof closeNotificationSection === 'undefined') {
+            window.closeNotificationSection = function() {
+                const section = document.getElementById('notification-section');
+                if (section) {
+                    section.style.display = 'none';
+                }
+            };
+        }
     </script>
 </body>
 </html>
